@@ -1166,6 +1166,7 @@ function renderUsage() {
 //     正在演的被更新的事件顶替时立刻让位——只有翻牌和刺杀会先演完揭晓那一下（min）
 //   · 桌上的时刻不接收点击（照样能点座位、行动栏）；点一下 / Esc 直接摆出结果
 //   · 轮到你行动时，正在演的时刻缩短到 hurry 就让路
+//   · 教练 / 规则的卷轴开着时先不演；教练正等着翻牌揭晓再回答时照常演（见 hintWait）
 //   · 所有定时器登记在 S.fx 里，新开一局时全部清掉：旧局的时刻不会出现在新局里
 // =====================================================================
 let FXGEN = 0;
@@ -1265,6 +1266,7 @@ function releaseQuest() {
   S.fx.holdTeam = null;
   releaseGate();
   if (S.g) { renderTracks(); renderTable(); }
+  hintResume();
 }
 function releaseRoles() {
   if (!S.fx.holdRoles) return;
@@ -1276,6 +1278,7 @@ function releaseReveal() {
   S.fx.holdReveal = 0;
   releaseGate();
   if (S.g) renderTable();
+  hintResume();
 }
 // 闸门打开：放出扣在它后面的记录；后面还有一道闸门（刺杀阶段）的，继续扣到那一幕开演
 function releaseGate() {
@@ -1576,8 +1579,9 @@ function nextMoment() {
   const m = fx.queue[0] || fx.finale;
   if (m) {
     const wrap = $(".table-wrap");
-    // 教练 / 规则的卷轴开着：先不演（不在卷轴后面白演一遍），压住的东西照旧压着；卷轴关上再接着演
-    if ($("#modal").open) { setAttr(wrap, "data-mo", ""); return; }
+    // 教练 / 规则的卷轴开着：先不演（不在卷轴后面白演一遍），压住的东西照旧压着；卷轴关上再接着演。
+    // 教练正等着翻牌揭晓再回答时例外（桌上的几幕照常演，胜负标题除外）
+    if ($("#modal").open && (m.body || !coachWaiting())) { setAttr(wrap, "data-mo", ""); return; }
     // 翻牌还没到开演的时候：桌心照旧是“任务进行中”（centerText 按扣住的那一轮画），到点再演
     const wait = (m.notBefore || 0) - performance.now();
     if (wait > 30) {
@@ -1605,6 +1609,8 @@ function pauseMoment() {
   c.el.remove();
   fx.cur = null;
   fx.queue.unshift(c.m);
+  // 已经翻定的牌（顶栏和记录也摆出了结果）：关上卷轴后直接摆出翻定的样子，不再扣着牌重翻一遍
+  if (c.landed && c.m.type === "quest_result") c.m.landed = true;
 }
 $("#modal").addEventListener("close", () => {
   const fx = S.fx;
@@ -1632,6 +1638,7 @@ function startMoment(m) {
   const ms = myTurn() && !m.body ? m.hurry : fx.queue.length ? Math.max(m.hurry, m.ms - 800, Math.min(m.ms, nextWait())) : m.ms;
   c.endAt = c.at + ms;
   c.timer = fxLater(() => endMoment(c), ms);
+  if (m.landed) skipMoment(); // 已经翻定过的牌（见 pauseMoment / rushHeld）：直接摆出结果，稍停就收起
 }
 // 把桌上的时刻摆进“上下座位之间”的那一条（不压住名牌和标签）；放不下就缩小，宽而矮的桌子把翻牌和印章左右摆开。
 // 还要在看得见的地方：桌面上是左栏的可视区，手机上是屏幕里、吸底行动栏以上（行动栏升起时不会把结果挡住）
@@ -1907,7 +1914,7 @@ function pulseIdentity() {
 // 点击 / 按键：收起身份牌、跳过桌上的时刻、关掉胜负标题
 // 用 click 而不是 pointerdown：手机上滑动页面不会误触发
 document.addEventListener("click", (e) => {
-  if (!S.fx) return;
+  if (!S.fx || e.target.closest?.("#modal")) return; // 卷轴里的点击（含点背景关卷轴）不碰桌上的时刻
   if (!e.target.closest?.(".reveal")) hideReveal();
   if (S.fx.cur && !S.fx.cur.m.body) skipMoment();
   if (e.target.closest?.(".table-wrap, .action-bar")) rushHeld(e.target);
@@ -1915,21 +1922,26 @@ document.addEventListener("click", (e) => {
 // 轮到你行动、但行动栏还压着揭晓（最后一次翻牌、刺杀阶段，或两幕之间的空档）：
 // 点一下桌面就把压着的结果全部摆出来、呈上行动卡片——同一下点击接着就能选人（后面那几幕照常演）
 function rushHeld(target = null) {
-  if (!myTurn() || !dockHeld()) return;
+  if (!myTurn() || !dockHeld() || $("#modal").open) return;
   // 翻牌还在开演前的等待里：随手点“标记”、教练、桌面空白处不让它提前开演（提前开演 = 结果已经到了，还轮到你了）；
   // 只有点座位的盾、点行动栏这种“要行动”的点击才直接摆出结果
   if (nextWait() > 0 && !target?.closest?.(".avatar, #action")) return;
-  for (const m of S.fx.queue) m.notBefore = 0;
+  // 牌面朝上、印章落下：桌上和顶栏、记录、行动栏在同一刻摆出结果（不是扣着的牌配上已经公布的比分）。
+  // 还排着的翻牌（前一幕还没收起）一开演就是翻定的样子
+  for (const m of S.fx.queue) {
+    m.notBefore = 0;
+    if (m.type === "quest_result") m.landed = true;
+  }
   if (!S.fx.cur) nextMoment();
   const c = S.fx.cur;
-  if (c && !c.m.body) landMoment(c);
+  if (c && !c.m.body && !c.el.classList.contains("skip")) skipMoment();
   releaseAll();
   // 排着的“刺杀阶段”要宣布的东西（缎带、记录、行动栏）已经随 releaseAll 摆出来了：
   // 不再在你选人、出手之后补演那块牌子（也不会把行动栏的话退回“讨论中”）
   S.fx.queue = S.fx.queue.filter((m) => m.type !== "evil_reveal");
 }
 document.addEventListener("keydown", (e) => {
-  if (!S.fx || e.repeat) return;
+  if (!S.fx || e.repeat || $("#modal").open) return; // 卷轴开着：Esc 只关卷轴
   const c = S.fx.cur;
   const key = e.key;
   if (c?.m.body && (key === "Escape" || key === "Enter" || key === " ")) {
@@ -2064,12 +2076,8 @@ function renderAction() {
   const bar = $(".action-bar");
   if (HINT.html && HINT.key !== hintKey()) { HINT.html = ""; hintReady(false); } // 局面变了：没看的提示作废
   const held = dockHeld();
-  // 揭晓途中教练按钮保持原样（对局刚结束时它会变灰——也是一种剧透）
-  if (!held) {
-    const noHint = g.status !== "running" || g.spectator;
-    setAttr($("#btn-hint"), "disabled", noHint ? "" : null);
-    bar.classList.toggle("no-hint", noHint);
-  }
+  syncHint();
+  hintResume();
   const p = held ? null : myTurn();
   bar.classList.toggle("your-turn", !!p);
   const title = p ? "【轮到你】阿瓦隆练习场" : "阿瓦隆练习场";
@@ -2684,7 +2692,7 @@ function openModal(title, html, kind = "", foot = "") {
   m.dataset.kind = kind;
   if (!m.open) {
     m.showModal();
-    pauseMoment(); // 桌上正在演的那一幕不在卷轴后面白演：关上卷轴再从头演
+    if (!coachWaiting()) pauseMoment(); // 桌上正在演的那一幕不在卷轴后面白演：关上卷轴再从头演
   }
   $("#modal-body").scrollTop = 0;
 }
@@ -2697,19 +2705,31 @@ const loadingNote = (text) => `<div class="loading"><span class="ld-ic">${ic("ca
 
 // 教练的提示针对“此刻”的局面：以待办（没有待办时以最新一条记录）为准，局面变了就作废
 const hintKey = () => `${S.gameId}|${S.g?.pending ? "p" + S.g.pending.id : "e" + S.lastId}`;
-const HINT = { seq: 0, key: "", html: "" };
+const HINT = { seq: 0, key: "", html: "", wait: 0, waitGame: "" }; // wait：等着桌上揭晓的那次提问（见 hintWait）
 const hintHtml = (text) => `${letter(text)}<p class="note-line">${ic("eye")}<span>教练只使用你能看到的信息，不会偷看别人的身份。</span></p>`;
 function hintReady(on) {
   const btn = $("#btn-hint");
   btn.classList.toggle("ready", on);
   setAttr(btn, "aria-label", on ? "教练（提示已经写好）" : null);
 }
-$("#btn-hint").onclick = async () => {
+// 教练按钮跟着对局状态（结束 / 观战时收起）。揭晓途中保持原样：对局刚结束时它会收起——也是一种剧透
+function syncHint() {
+  if (!S.g || dockHeld()) return;
+  const noHint = S.g.status !== "running" || S.g.spectator;
+  setAttr($("#btn-hint"), "disabled", noHint ? "" : null);
+  $(".action-bar").classList.toggle("no-hint", noHint);
+}
+// 教练看的是服务器上“此刻”的局面。任务牌还在出（结果随时会到）、或者结果已经到了但翻牌 / 刺杀阶段 / 胜负还压着：
+// 这时去问，回答里就会带出桌上还没翻开的结果（比分、对局已结束）。所以先等桌上揭晓完再问——
+// 结果到没到都一样等（只在结果已经到了时才等，等本身就成了线索）
+const hintWait = () => {
+  const fx = S.fx, g = S.g;
+  return !!g && (fx.holdQuest >= 0 || !!fx.holdReveal || !!fx.holdEnd || (g.status === "running" && g.phase === "quest" && !myTurn()));
+};
+$("#btn-hint").onclick = () => {
   if (!S.gameId) return;
-  const btn = $("#btn-hint");
-  const key = hintKey();
   // 关掉卷轴之后才写好的提示：再点一下直接看
-  if (HINT.html && HINT.key === key) {
+  if (HINT.html && HINT.key === hintKey()) {
     openModal("教练提示", HINT.html, "hint");
     hintReady(false);
     return;
@@ -2717,9 +2737,45 @@ $("#btn-hint").onclick = async () => {
   HINT.html = "";
   hintReady(false);
   const seq = ++HINT.seq;
+  // 要等的时候卷轴照样展开（说明在等什么），桌上的翻牌照常演（不像平时那样停在卷轴后面），揭晓完马上去问
+  HINT.wait = hintWait() ? seq : 0;
+  HINT.waitGame = S.gameId;
+  openModal("教练提示", HINT.wait
+    ? loadingNote("任务牌翻开后，教练马上回答") + `<p class="note-line">${ic("eye")}<span>关上卷轴就能看翻牌；写好之后，教练按钮上会亮起一颗红点。</span></p>`
+    : loadingNote("教练正在看你的牌面和局势"), "hint");
+  if (HINT.wait) hintResume(); // 对局已经结束、揭晓也演过了：直接说明
+  else askCoach(seq);
+};
+// 教练的卷轴正等着桌上揭晓：这时桌上的几幕照常演
+const coachWaiting = () => !!HINT.wait && $("#modal").open && $("#modal").dataset.kind === "hint";
+// 每次放开压住的东西 / 重画行动栏之后看一眼：等的那次提问现在可以问了吗
+// 卷轴等的时候被关上了：照样等、照样问，写好了在教练按钮上亮一个小点（和问的途中关上卷轴一样）
+function hintResume() {
+  const seq = HINT.wait;
+  if (!seq || !S.g) return;
+  if (HINT.waitGame !== S.gameId || seq !== HINT.seq) { HINT.wait = 0; return; }
+  const fx = S.fx;
+  const over = S.g.status !== "running";
+  // 对局已经结束：翻牌（和“刺杀阶段”）揭晓了就不再等——后面的刺杀、胜负标题等卷轴关上再演
+  if (over ? fx.holdQuest >= 0 || !!fx.holdReveal : hintWait()) return;
+  HINT.wait = 0;
+  const showing = $("#modal").open && $("#modal").dataset.kind === "hint";
+  if (over) {
+    if (showing) {
+      openModal("教练提示", S.g.status === "ended"
+        ? letter("这一局已经分出胜负。关上卷轴看结局；结算里可以请教练把整局**复盘**一遍。")
+        : `<p class="error">对局不在进行中</p>`, "hint");
+    }
+    return;
+  }
+  if (showing) openModal("教练提示", loadingNote("教练正在看你的牌面和局势"), "hint");
+  askCoach(seq);
+}
+async function askCoach(seq) {
+  const btn = $("#btn-hint");
   const id = S.gameId;
+  const key = hintKey();
   btn.disabled = true;
-  openModal("教练提示", loadingNote("教练正在看你的牌面和局势"), "hint");
   let html;
   try {
     const r = await api(`/api/games/${id}/hint`, {});
@@ -2727,7 +2783,8 @@ $("#btn-hint").onclick = async () => {
   } catch (err) {
     html = `<p class="error">${esc(err.message)}</p>`;
   }
-  btn.disabled = S.g?.status !== "running" || !!S.g?.spectator;
+  btn.disabled = false;
+  syncHint();
   // 换了一局 / 又点了一次：这份作废
   if (S.gameId !== id || seq !== HINT.seq) return;
   const m = $("#modal");
@@ -2739,7 +2796,7 @@ $("#btn-hint").onclick = async () => {
     HINT.html = html;
     hintReady(true);
   }
-};
+}
 
 // 结算横幅里的五枚任务火漆（和顶栏同一套样式）：成功 / 失败 / 没打到的轮次
 function questSeals(g) {
