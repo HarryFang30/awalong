@@ -24,6 +24,14 @@ const ART = (() => {
   const color = (seat) => TINCT[(seat - 1) % TINCT.length];
 
   function shield(seat, cls = "shield") {
+    // seat 为 0：未定座位的素面盾（羊皮纸底 + 金边），用于开局预览里“随机座位”的你
+    if (!seat) {
+      return `<svg class="${cls}" viewBox="0 0 64 74" aria-hidden="true" focusable="false">` +
+        `<g clip-path="url(#clip-shield)"><rect width="64" height="74" fill="#efe1bd"/>` +
+        `<path d="M0 37H64V74H0Z" fill="#8a6a24" fill-opacity=".14"/>` +
+        `<rect width="64" height="74" fill="url(#g-shine)"/></g>` +
+        `<path class="rim" d="${SHIELD}" fill="none" stroke="url(#g-gold)" stroke-width="3.2"/></svg>`;
+    }
     const i = (seat - 1) % 10;
     const dark = i === 7;
     return `<svg class="${cls}" viewBox="0 0 64 74" aria-hidden="true" focusable="false">` +
@@ -102,5 +110,5 @@ const ART = (() => {
 // 页面静态位置的美术（品牌徽章、教练蜡烛）
 document.querySelectorAll("[data-art]").forEach((el) => {
   const k = el.dataset.art;
-  el.innerHTML = k === "crest" ? ART.crest() : ART.icon(k);
+  el.innerHTML = k === "crest" ? ART.crest() : k === "lady" ? ART.ladyBadge() : ART.icon(k);
 });

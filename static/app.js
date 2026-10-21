@@ -130,7 +130,12 @@ async function initSetup() {
   refreshSetup();
   refreshMode();
   $("#f-num").addEventListener("change", refreshSetup);
-  $("#f-seat").addEventListener("change", () => { $("#f-role").disabled = $("#f-seat").value === "watch"; });
+  $("#f-seat").addEventListener("change", () => {
+    $("#f-role").disabled = $("#f-seat").value === "watch";
+    renderLobby();
+  });
+  $("#f-role").addEventListener("change", renderLobby);
+  $("#f-lady").addEventListener("change", renderLobby);
   form.addEventListener("change", (e) => { if (e.target.name === "mode") refreshMode(); });
   $("#btn-check").addEventListener("click", checkKey);
   form.addEventListener("submit", startGame);
@@ -145,28 +150,96 @@ function refreshSetup() {
   const prevSeat = seatSel.value || load("avalon.seat") || "random";
   seatSel.innerHTML = `<option value="random">随机</option>` +
     Array.from({ length: n }, (_, i) => `<option value="${i + 1}">${i + 1}号</option>`).join("") +
-    `<option value="watch">观战（全 AI 对局，上帝视角）</option>`;
+    `<optgroup label="不上桌，看全 AI 对局"><option value="watch">观战</option></optgroup>`;
   seatSel.value = prevSeat === "watch" || +prevSeat <= n ? prevSeat : "random";
 
   const roleSel = $("#f-role");
   const prevRole = roleSel.value || load("avalon.role") || "random";
   const unique = [...new Set(preset.roles)];
+  const roleOpts = (team) => unique.filter((r) => roles[r].team === team)
+    .map((r) => `<option value="${r}">${esc(roles[r].name)}</option>`).join("");
   roleSel.innerHTML = `<option value="random">随机（推荐）</option>` +
-    unique.map((r) => `<option value="${r}">${roles[r].name}（${TEAM_NAME[roles[r].team]}）</option>`).join("");
+    `<optgroup label="好人阵营">${roleOpts("good")}</optgroup><optgroup label="坏人阵营">${roleOpts("evil")}</optgroup>`;
   roleSel.value = unique.includes(prevRole) ? prevRole : "random";
   roleSel.disabled = seatSel.value === "watch";
 
   const counts = {};
   preset.roles.forEach((r) => { counts[r] = (counts[r] || 0) + 1; });
   const tags = Object.entries(counts)
-    .map(([r, c]) => `<span class="tag ${roles[r].team}" title="${esc(roles[r].ability)}">${roles[r].name}${c > 1 ? "×" + c : ""}</span>`)
+    .map(([r, c]) => `<span class="tag ${roles[r].team}" title="${esc(roles[r].ability)}">${ART.role(r, "emblem")}${esc(roles[r].name)}${c > 1 ? `<b>×${c}</b>` : ""}</span>`)
     .join("");
   const sizes = preset.team_sizes
-    .map((z, i) => `<span class="qs${n >= 7 && i === 3 ? " two" : ""}" title="第${i + 1}轮：${z}人">${z}</span>`)
+    .map((z, i) => `<span class="qs${n >= 7 && i === 3 ? " two" : ""}" title="第${i + 1}轮：${z}人${n >= 7 && i === 3 ? "，需2张失败" : ""}">${z}</span>`)
     .join("");
   $("#roles-preview").innerHTML =
     `<div class="rp-row"><span class="rp-k">本局角色</span><span class="rp-v">${tags}</span></div>` +
-    `<div class="rp-row"><span class="rp-k">任务人数</span><span class="rp-v">${sizes}${n >= 7 ? "<small>（第4轮需2张失败）</small>" : ""}</span></div>`;
+    `<div class="rp-row"><span class="rp-k">任务人数</span><span class="rp-v">${sizes}${n >= 7 ? "<small>第4轮需2张失败</small>" : ""}</span></div>`;
+  renderLobby();
+}
+
+// 开局预览：一张小圆桌，纹章盾按人数排开；你坐在正下方（观战则在桌外）
+function renderLobby() {
+  const box = $("#lobby-table");
+  if (!box || !S.config) return;
+  const n = +$("#f-num").value;
+  const seatVal = $("#f-seat").value;
+  const watch = seatVal === "watch";
+  const mine = watch ? 0 : +seatVal || 0; // 0 = 随机座位
+  const roleKey = $("#f-role").value;
+  const roles = S.config.roles;
+  const preset = S.config.presets[n];
+  const good = preset.roles.filter((r) => roles[r].team === "good").length;
+  const lady = $("#f-lady").checked;
+
+  // 座位节点常驻，只改位置和内容：换人数时盾牌会沿桌边滑到新位置
+  if (!box._seats) {
+    box._seats = [];
+    for (let i = 0; i <= 10; i++) {
+      const el = document.createElement("span");
+      el.className = "lt-seat";
+      box.appendChild(el);
+      box._seats.push(el);
+    }
+  }
+  const base = mine || 1;
+  const off = watch ? 0.5 : 0; // 观战：桌边留出正下方给“你”的眼睛
+  box._seats.forEach((el, i) => {
+    const s = i; // 0 号节点 = 观战之眼
+    let show = s >= 1 && s <= n;
+    let x = 50, y = 83, html = "", cls = "lt-seat";
+    if (s === 0) {
+      show = watch;
+      cls += " eye";
+      html = `<span class="lt-eye">${ic("eye")}</span><i>观战</i>`;
+    } else if (show) {
+      const th = Math.PI / 2 + ((s - base + off) * 2 * Math.PI) / n;
+      x = 50 + 39 * Math.cos(th);
+      y = 50 + 36.5 * Math.sin(th);
+      const me = !watch && s === base;
+      const unknown = me && !mine;
+      if (me) cls += unknown ? " me unk" : " me";
+      // 随机座位时号码未定：你的盾是素面“？”，其他人只画纹章不写号码
+      const num = unknown ? "?" : mine || watch ? s : "";
+      html = ART.shield(unknown ? 0 : s) + (num === "" ? "" : `<b>${num}</b>`) + (me ? "<i>你</i>" : "");
+    }
+    if (!show) cls += " off";
+    if (el.className !== cls) el.className = cls;
+    if (show) {
+      el.style.left = x.toFixed(2) + "%";
+      el.style.top = y.toFixed(2) + "%";
+    }
+    patch(el, html);
+  });
+
+  patch($("#lobby-center"),
+    `<b class="lt-n">${n}<small>人局</small></b>` +
+    `<span class="lt-teams"><span class="g">好人 ${good}</span><span class="e">坏人 ${n - good}</span></span>` +
+    (lady ? `<span class="lt-lady">${ART.ladyBadge()}湖中仙女</span>` : ""));
+
+  const roleText = roleKey && roleKey !== "random" && roles[roleKey] ? `扮演<b>${esc(roles[roleKey].name)}</b>` : "角色随机";
+  patch($("#lobby-cap"), watch
+    ? `<b>观战</b>：全 AI 对局，所有身份一览无余`
+    : `${mine ? `你坐<b>${mine}号</b>位` : "座位随机"} · ${roleText}`);
 }
 
 function refreshMode() {
@@ -210,7 +283,10 @@ async function startGame(e) {
   store("avalon.mode", body.mode);
 
   const btn = $("#btn-start");
+  const label = $(".bs-label", btn);
   btn.disabled = true;
+  btn.setAttribute("aria-busy", "true");
+  if (label) label.textContent = "召集骑士中…";
   $("#setup-error").textContent = "";
   try {
     const { id } = await api("/api/games", body);
@@ -219,6 +295,8 @@ async function startGame(e) {
     $("#setup-error").textContent = err.message;
   } finally {
     btn.disabled = false;
+    btn.removeAttribute("aria-busy");
+    if (label) label.textContent = "开始游戏";
   }
 }
 
