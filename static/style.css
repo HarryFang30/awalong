@@ -515,6 +515,12 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 /* ---------- 开始游戏 ---------- */
 .start-row { display: flex; flex-direction: column; gap: 6px; }
 .start-row .error { margin: 0; min-height: 0; text-align: center; font-weight: 600; text-wrap: balance; }
+/* 开局失败：和“测试连接”的失败结果同一种小签 */
+.start-row .error:not(:empty) {
+  display: flex; align-items: flex-start; gap: 6px; padding: 6px 12px; border-radius: 6px; text-align: left; font-size: 13px; overflow-wrap: anywhere;
+  color: var(--crimson-ink); background: var(--crimson-soft); box-shadow: inset 0 0 0 1px rgba(138, 24, 36, .3);
+}
+.start-row .error .ic { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 3px; }
 #btn-start {
   min-height: 56px; gap: 12px; font: 700 20px var(--serif); letter-spacing: 8px; text-indent: 8px;
   color: #fbefd6; text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
@@ -791,6 +797,8 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
   background: rgba(22, 13, 7, .72); box-shadow: 0 0 0 1px rgba(201, 162, 74, .22);
 }
 .seat .name small { font-size: 11px; font-weight: 500; }
+.plate.mk-wide { gap: 2px; width: max-content; max-width: calc(var(--seat-w) + 12px); } /* 和下面的缎带一样宽，不会多压到邻座 */
+.plate.mk-wide .name { padding-left: 3px; padding-right: 3px; }
 /* 你的名牌：名字太长只省略名字，“（你）”不缩；正下方有地方，名牌可以比别人宽一点 */
 .seat.me .plate { max-width: calc(var(--seat-w) + 30px); }
 .seat.me .name { display: inline-flex; align-items: baseline; }
@@ -805,6 +813,7 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .seat.side-r { grid-template-columns: var(--sh) auto; grid-template-areas: "av plate" "av labels"; transform: translate(calc(var(--sh) * -.5), -50%); }
 .seat.side-l .avatar, .seat.side-r .avatar { grid-area: av; }
 .seat.side-l .plate, .seat.side-r .plate { grid-area: plate; align-self: end; margin: 0; max-width: var(--info-w); }
+.seat.side-l .plate.mk-wide, .seat.side-r .plate.mk-wide { max-width: calc(var(--info-w) + 4px); } /* 座位格子本身留了 6px 余量 */
 .seat.side-l .labels, .seat.side-r .labels { grid-area: labels; align-self: start; margin: 0; max-width: var(--info-w); }
 .seat.side-l .plate, .seat.side-l .labels { justify-self: end; justify-content: flex-end; }
 .seat.side-r .plate, .seat.side-r .labels { justify-self: start; justify-content: flex-start; }
@@ -1083,7 +1092,8 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .mo.row .plq { grid-area: plq; margin-top: 12px; }
 /* 桌心很挤：省掉小标题，牌小一号（app.js 的 fitMoment 量过才加） */
 .mo.compact { gap: 6px; }
-.mo.compact .qc-kick { display: none; }
+/* 收起小标题但不 display:none：量尺寸时来回加减 .compact 会让它的淡入动画重播（标题一闪一闪） */
+.mo.compact .qc-kick { position: absolute; visibility: hidden; }
 .mo.compact .qc-row { gap: 6px; margin-bottom: 12px; }
 .mo.compact .qcard { --cw: 44px; }
 .mo.row.compact { grid-template-areas: "cards plq"; }
@@ -1338,10 +1348,10 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .ts-ic .ic { width: 16px; height: 16px; }
 .tswitch input:checked ~ .ts-text { color: var(--arcane-ink); }
 
-.log { flex: 1; overflow-y: auto; padding: 12px 18px 22px; overflow-anchor: none; scrollbar-width: thin; scrollbar-color: var(--parch-edge) transparent; }
+.log { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px 18px 22px; overflow-anchor: none; scrollbar-width: thin; scrollbar-color: var(--parch-edge) transparent; }
 /* 往上翻着看时来了新记录：底部浮出一枚羊皮纸小签“有新记录”，点一下回到最新 */
 .log-new {
-  position: absolute; left: 50%; bottom: 14px; z-index: 2; translate: -50% 0;
+  position: absolute; left: 50%; bottom: calc(14px + var(--lift, 0px)); /* --lift：手机上记录区压在吸底行动栏下面的那一截（app.js 的 placePill） */ z-index: 2; translate: -50% 0;
   display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 3px 14px 3px 10px; border-radius: 999px;
   font: 700 13px/1 var(--sans); letter-spacing: 1px; color: var(--crimson-ink); white-space: nowrap;
   background: linear-gradient(180deg, #fffaf0, #f1e2bd); border: 1px solid var(--gold-deep);
@@ -1378,9 +1388,11 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 }
 .ev-divider::before, .ev-divider::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--gold-deep)); }
 .ev-divider::after { background: linear-gradient(90deg, var(--gold-deep), transparent); }
-.ev-divider span { display: inline-flex; align-items: center; gap: 10px; }
-.ev-divider span::before, .ev-divider span::after { content: ""; width: 6px; height: 6px; background: var(--gold-deep); transform: rotate(45deg); }
-.ev-divider.evil span::before, .ev-divider.evil span::after { background: var(--crimson); }
+.ev-divider > span { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.ev-divider > span::before, .ev-divider > span::after { content: ""; flex: none; width: 6px; height: 6px; background: var(--gold-deep); transform: rotate(45deg); }
+.ev-divider.evil > span::before, .ev-divider.evil > span::after { background: var(--crimson); }
+/* 标题文字：两段不断行，记录栏太窄时只在“需2张失败”前折行（不撑出横向滚动） */
+.ev-divider b { font: inherit; min-width: 0; white-space: normal; text-align: center; }
 
 .ev-proposal, .ev-lady {
   display: flex; gap: 9px; align-items: flex-start; padding: 7px 12px; color: var(--ink);
@@ -1736,7 +1748,7 @@ body.show-thoughts .thought { display: flex; }
 .w-tip:empty { display: none; }
 .w-tip-k { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 700; letter-spacing: 1px; color: var(--gold-hi); }
 .w-tip-k .ic { width: 14px; height: 14px; align-self: center; }
-.w-tip-k.say { letter-spacing: 0; } /* 手机上发言阶段：这一格是最新的一条发言（N号 名字：……） */
+.w-tip-k.w-say { letter-spacing: 0; } /* 手机上发言阶段：这一格是最新的一条发言（N号 名字：……） */
 .w-tip-t.in { animation: tip-in .6s ease-out both; }
 @keyframes tip-in { from { opacity: 0; transform: translateY(5px); } }
 .dots::after { content: ""; display: inline-block; width: 1.4em; text-align: left; animation: dots 1.4s steps(4) infinite; }
@@ -1759,6 +1771,8 @@ body.show-thoughts .thought { display: flex; }
 .end-row.win-evil .end-title { color: #ffb4ac; }
 .end-title small { font: 600 12.5px var(--sans); letter-spacing: 1px; color: var(--cream-2); }
 .end-sub { font-size: 13px; color: var(--cream-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 出错的原因（桌心写着“原因见下方”）：折行显示，最多三行，完整的在 title 和对局记录里 */
+.end-row.stopped .end-sub { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow-wrap: anywhere; }
 .end-btns { display: flex; gap: 10px; flex: 0 0 auto; }
 .end-btns button { min-height: 44px; padding: 8px 18px; }
 .end-btns button .ic { width: 17px; height: 17px; }
@@ -2174,7 +2188,11 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   background: rgba(0, 0, 0, .32); box-shadow: inset 0 0 0 1px rgba(236, 208, 138, .5);
 }
 .fn-sub { margin: 8px 0 0; font-size: 13.5px; line-height: 1.6; max-width: 30em; text-wrap: balance; }
-.fn-hint { position: relative; font-size: 12.5px; letter-spacing: 2px; color: var(--cream-2); animation: fade-in .4s ease-out .9s both; }
+/* 深色小签：手机上落在压暗的座位名牌上也读得清 */
+.fn-hint {
+  position: relative; font-size: 12.5px; letter-spacing: 2px; text-indent: 2px; color: var(--cream); padding: 4px 14px; border-radius: 999px;
+  background: rgba(20, 12, 6, .82); box-shadow: 0 0 0 1px rgba(201, 162, 74, .5); animation: fade-in .4s ease-out .9s both;
+}
 @keyframes fn-unfurl { 0% { transform: scaleY(.05); opacity: 0; } 60% { transform: scaleY(1.03); opacity: 1; } 100% { transform: none; } }
 @keyframes fn-title { 0% { transform: scale(1.5); opacity: 0; } 100% { transform: none; opacity: 1; } }
 
@@ -2759,6 +2777,9 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
    （翻着看记录时页面不会跳）——窄屏竖屏、横屏都固定留两行高；平板（721–900）最多两行、同样留两行 */
 @media (max-width: 720px), (orientation: landscape) and (max-height: 620px) and (min-width: 600px) {
   .w-tip-t { min-height: 3em; }
+  /* 小贴士和最新发言两种格子一样高：标签固定一行高、顶端对齐（“3号”里的数字会把基线撑低几像素，行动栏跟着跳） */
+  .w-tip { align-items: flex-start; }
+  .w-tip-k { height: 1.5em; }
   .pick.nudge::after { left: 0; right: auto; } /* 已选栏在左边：提示往右展开，不伸出屏幕 */
 }
 @media (min-width: 721px) and (max-width: 900px) {
@@ -2834,6 +2855,11 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .act-side.with-pick .pick { flex: 0 0 auto; min-height: 44px; }
   .act-side.with-pick .pick .slots { display: none; }
   .act-side.with-pick > button { flex: 1 1 auto; padding-left: 10px; padding-right: 10px; letter-spacing: 1px; }
+  /* 终局行动栏只有一百来像素宽的两个按钮：“再来一局”不折成两行 */
+  .end-btns button { white-space: nowrap; padding-left: 10px; padding-right: 10px; letter-spacing: 0; }
+  /* 记录栏很窄：分隔标题小一号（“第4轮任务 · 10人 · 需2张失败”放得下一行） */
+  .ev-divider { font-size: 12.5px; letter-spacing: 1px; gap: 6px; margin-top: 16px; }
+  .ev-divider > span { gap: 6px; }
   .tswitch { gap: 7px; font-size: 12.5px; min-width: 0; }
   .ts-long { display: none; }
   .action-bar {
