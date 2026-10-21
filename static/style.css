@@ -275,15 +275,16 @@ textarea { resize: vertical; min-height: 58px; line-height: 1.55; }
   box-shadow: 0 0 0 3px rgba(0, 0, 0, .14), 0 0 0 4px rgba(201, 162, 74, .3), inset 0 0 22px rgba(0, 0, 0, .35);
 }
 .lt-center {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1;
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1; padding: 6px 14px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(18, 11, 5, .45), rgba(18, 11, 5, .3) 65%, rgba(18, 11, 5, 0));
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   color: var(--cream); text-shadow: 0 1px 2px rgba(0, 0, 0, .85); white-space: nowrap; line-height: 1.15;
 }
 .lt-n { font: 700 25px/1 var(--num); color: var(--gold-hi); }
-.lt-n small { font: 700 11.5px var(--sans); letter-spacing: 2px; margin-left: 3px; color: var(--cream-2); }
+.lt-n small { font: 700 11.5px var(--sans); letter-spacing: 2px; margin-left: 3px; color: var(--cream); }
 .lt-teams { display: flex; gap: 8px; font-size: 11.5px; font-weight: 700; letter-spacing: 1px; }
-.lt-teams .g { color: #bcd4f8; }
-.lt-teams .e { color: #ffb6ad; }
+.lt-teams .g { color: #d6e4ff; }
+.lt-teams .e { color: #ffcfc8; }
 .lt-lady { display: inline-flex; align-items: center; gap: 4px; margin-top: 1px; font-size: 11px; font-weight: 700; color: #d2edf7; letter-spacing: 1px; }
 .lt-lady svg { width: 15px; height: 15px; flex: 0 0 auto; }
 
@@ -621,7 +622,7 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .quest .two, .quest .qf {
   position: absolute; z-index: 1; font: 700 10.5px/1 var(--sans); padding: 3px 5px; border-radius: 3px; white-space: nowrap; text-shadow: none;
 }
-.quest .two { top: -9px; right: -15px; color: #2a1c10; background: linear-gradient(180deg, #f2c26c, var(--amber)); box-shadow: 0 0 0 1px #5a3a08, 0 2px 3px rgba(0, 0, 0, .5); }
+.quest .two { top: -6px; right: -16px; font-size: max(9.5px, calc(var(--q) * .25)); color: #2a1c10; background: linear-gradient(180deg, #f2c26c, var(--amber)); box-shadow: 0 0 0 1px #5a3a08, 0 2px 3px rgba(0, 0, 0, .5); }
 .quest .qf { bottom: -9px; right: -13px; color: #fff3ee; background: linear-gradient(180deg, #a3202e, #6e111c); box-shadow: 0 0 0 1px rgba(255, 190, 170, .55), 0 2px 3px rgba(0, 0, 0, .5); }
 .quest.just { animation: seal-press .75s cubic-bezier(.2, 1.4, .4, 1) both; }
 @keyframes seal-press {
@@ -651,7 +652,13 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
    圆桌：桌面椭圆和座位环都由 app.js 按区域实际宽高算出
    （--cy 桌心高度、--ox/--oy 桌面半轴；座位沿更大的椭圆按弧长等距排开）
    ===================================================================== */
+/* 桌面椭圆和桌心文字的位置由 app.js 写进这些变量；注册成长度后，圆桌变大小时能平滑过渡 */
+@property --cy { syntax: "<length-percentage>"; inherits: true; initial-value: 50%; }
+@property --ox { syntax: "<length-percentage>"; inherits: true; initial-value: 34%; }
+@property --oy { syntax: "<length-percentage>"; inherits: true; initial-value: 36%; }
+@property --tc-y { syntax: "<length-percentage>"; inherits: true; initial-value: 50%; }
 .table-wrap { position: relative; width: 100%; margin: 0 auto; flex: 0 0 auto; }
+.table-wrap.ring-ready { transition: --cy .3s cubic-bezier(.25, .8, .3, 1), --ox .3s cubic-bezier(.25, .8, .3, 1), --oy .3s cubic-bezier(.25, .8, .3, 1), --tc-y .3s cubic-bezier(.25, .8, .3, 1); }
 .table-wrap::before {
   content: ""; position: absolute; inset: -2% -4%; pointer-events: none;
   background: radial-gradient(50% 50% at 50% 50%, rgba(236, 180, 100, .13), transparent 70%);
@@ -693,22 +700,27 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
     inset 0 0 40px rgba(0, 0, 0, .35);
 }
 .table-center {
-  position: absolute; left: 50%; top: var(--cy, 50%); transform: translate(-50%, -50%); z-index: 1;
+  position: absolute; left: 50%; top: var(--tc-y, var(--cy, 50%)); transform: translate(-50%, -50%); z-index: 1;
   width: min(calc(var(--ox, 34%) * 1.3), 380px); text-align: center; font-size: 13.5px; line-height: 1.5; color: var(--cream); pointer-events: none;
   text-shadow: 0 1px 2px rgba(0, 0, 0, .8);
   transition: opacity .25s;
 }
-.tc-kicker { font-size: 11.5px; letter-spacing: 3px; color: var(--cream-2); }
-.table-center .phase { font: 700 18px/1.35 var(--serif); letter-spacing: 2px; color: var(--gold-hi); margin: 2px 0; }
-.table-center .phase.evil-text, .table-center .win-evil { color: #ff9c94; }
-.table-center .win-good { color: #a9c8f5; }
-.table-center .tc-line { color: var(--cream); }
-.table-center .phase.pick { font-size: 20px; letter-spacing: 3px; }
-/* 桌心标题和行动栏的“已选”框（.pick）同名：桌心这里不要那个框 */
-.table-center .phase.pick { display: block; min-height: 0; padding: 0; border-radius: 0; background: none; box-shadow: none; }
-.table-center .cnt { font: 700 15px var(--num); letter-spacing: 0; color: var(--cream-2); margin-left: 4px; white-space: nowrap; }
-.table-center .cnt b { font-size: 22px; color: var(--gold-hi); }
-.table-center .cnt.done b { color: #b8f0c6; }
+/* 桌心文字后面一团淡淡的暗影：浅色木纹上的小字也够清楚（对比度 ≥ 4.5） */
+.table-center:not(:empty)::before {
+  content: ""; position: absolute; inset: -12px -20px; z-index: -1; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(18, 11, 5, .5), rgba(18, 11, 5, .4) 60%, rgba(18, 11, 5, 0));
+}
+.tc-kicker { font-size: 11.5px; letter-spacing: 3px; color: var(--cream); text-wrap: balance; }
+.table-center .phase { font: 700 18px/1.35 var(--serif); letter-spacing: 2px; color: var(--gold-hi); margin: 2px 0; text-wrap: balance; }
+.table-center .phase.evil-text, .table-center .win-evil { color: #ffbdb5; }
+.table-center .win-good { color: #c4d9fa; }
+.table-center .tc-line { color: var(--cream); text-wrap: balance; }
+/* 矮的桌心：先省掉小标题，再省掉说明行（app.js 量过高度后加 .tight / .tighter） */
+.table-center.tight .tc-kicker, .table-center.tighter .tc-line { display: none; }
+.table-center .phase.tc-pick { font-size: 20px; letter-spacing: 3px; }
+.tc-cnt { display: inline-block; font: 700 15px var(--num); letter-spacing: 0; color: var(--cream); margin-left: 4px; white-space: nowrap; }
+.tc-cnt b { font-size: 22px; color: var(--gold-hi); }
+.tc-cnt.done b { color: #b8f0c6; }
 .tc-slots { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 6px; margin-top: 7px; }
 .tc-slots .slot { display: grid; place-items: center; }
 .tc-slots .slot-shield { width: 30px; height: 35px; display: block; overflow: visible; margin-bottom: 4px; }
@@ -810,7 +822,8 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 }
 .seat.selected .avatar .rim { stroke: #fff6d2; stroke-width: 4.6; }
 .seat.selected .name { color: #2a1c10; background: linear-gradient(180deg, #f3dc98, #d2a94e); box-shadow: 0 0 0 1px #7a5a14; }
-.seat.dim { opacity: .42; filter: saturate(.35); }
+.seat.dim .avatar { opacity: .4; filter: saturate(.3) drop-shadow(0 4px 5px rgba(0, 0, 0, .6)); }
+.seat.dim .plate { opacity: .88; }
 /* 刺杀：选中的目标用暗红光环 */
 .table.pick-assassinate .seat.selected .avatar::after,
 .table.pick-assassin_suggest .seat.selected .avatar::after {
@@ -930,14 +943,14 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .mo-wrap { position: absolute; inset: 0; }
 .mo-wrap.out { animation: fade-out .26s ease-in forwards; }
 .mo {
-  position: absolute; left: 50%; top: var(--cy, 50%);
+  position: absolute; left: 50%; top: var(--mo-y, var(--tc-y, var(--cy, 50%)));
   transform: translate(-50%, -50%) scale(var(--mo-s, 1));
   display: flex; flex-direction: column; align-items: center; gap: 10px;
   transition: transform .26s ease-in;
 }
 .mo-wrap.out .mo { transform: translate(-50%, -50%) scale(calc(var(--mo-s, 1) * .94)) translateY(-8px); }
 /* 时刻和身份牌出现时，桌心的文字让开 */
-.table-wrap:has(.mo-wrap:not(.out)) .table-center, .table-wrap:has(.reveal:not(.out)) .table-center { opacity: 0; }
+.table-wrap[data-mo] .table-center, .table-wrap:has(.reveal:not(.out)) .table-center { opacity: 0; }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes fade-out { to { opacity: 0; } }
 
@@ -964,9 +977,9 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
   box-shadow: 0 0 0 2px var(--gold), 0 0 0 4px rgba(20, 12, 6, .65), 0 4px 10px rgba(0, 0, 0, .5);
 }
 .plq-seal .ic { width: 22px; height: 22px; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .5)); }
-.plq-kick { font-size: 12px; letter-spacing: 2px; color: #fff; }
+.plq-kick { font-size: 12px; letter-spacing: 2px; color: #fff; text-wrap: balance; }
 .plq-title { font: 800 26px/1.3 var(--serif); letter-spacing: 5px; text-indent: 5px; }
-.plq-sub { font-size: 13px; line-height: 1.55; }
+.plq-sub { font-size: 13px; line-height: 1.55; text-wrap: balance; }
 .plq-note {
   margin-top: 5px; padding: 1px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
   background: rgba(0, 0, 0, .3); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .25);
@@ -997,6 +1010,13 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .mo.row .qc-kick { grid-area: kick; align-self: end; }
 .mo.row .qc-row { grid-area: cards; align-self: start; margin: 0; }
 .mo.row .plq { grid-area: plq; margin-top: 12px; }
+/* 桌心很挤：省掉小标题，牌小一号（app.js 的 fitMoment 量过才加） */
+.mo.compact { gap: 6px; }
+.mo.compact .qc-kick { display: none; }
+.mo.compact .qc-row { gap: 6px; margin-bottom: 12px; }
+.mo.compact .qcard { --cw: 44px; }
+.mo.row.compact { grid-template-areas: "cards plq"; }
+.mo.row.compact .qc-row { align-self: center; }
 .qcard { --cw: 56px; width: var(--cw); height: calc(var(--cw) * 1.4); animation: qc-deal .3s cubic-bezier(.2, 1.2, .4, 1) var(--d, 0ms) both; }
 .qc-in {
   position: relative; width: 100%; height: 100%; transform-style: preserve-3d;
@@ -1246,7 +1266,7 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .ts-ic .ic { width: 16px; height: 16px; }
 .tswitch input:checked ~ .ts-text { color: var(--arcane-ink); }
 
-.log { flex: 1; overflow-y: auto; padding: 12px 18px 22px; scroll-behavior: smooth; scrollbar-width: thin; scrollbar-color: var(--parch-edge) transparent; }
+.log { flex: 1; overflow-y: auto; padding: 12px 18px 22px; overflow-anchor: none; scrollbar-width: thin; scrollbar-color: var(--parch-edge) transparent; }
 .log::-webkit-scrollbar { width: 9px; }
 .log::-webkit-scrollbar-thumb { background: var(--parch-edge); border-radius: 9px; border: 2px solid var(--parch-100); }
 .evw.fresh { animation: ev-in .35s ease-out both; }
@@ -1344,11 +1364,15 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .vbar { position: relative; height: 7px; margin: 9px 0 0; }
 .vb-track {
   position: absolute; inset: 0; border-radius: 4px; overflow: hidden;
-  background: linear-gradient(180deg, #c4424b, #93202c);
-  box-shadow: inset 0 1px 1px rgba(0, 0, 0, .25), 0 0 0 1px rgba(138, 106, 36, .35);
+  background: rgba(138, 106, 36, .16);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, .18), 0 0 0 1px rgba(138, 106, 36, .35);
 }
-.vb-yes { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(180deg, #52a067, #2b6f3e); box-shadow: 1px 0 0 rgba(255, 248, 230, .95); transform-origin: left center; }
-.evw.fresh .vb-yes { animation: vb-grow .7s cubic-bezier(.2, .9, .3, 1) .15s both; }
+/* 赞成从左边长出、反对从右边长出：动画途中不会出现并不存在的票型 */
+.vb-yes, .vb-no { position: absolute; top: 0; bottom: 0; }
+.vb-yes { left: 0; background: linear-gradient(180deg, #52a067, #2b6f3e); transform-origin: left center; }
+.vb-no { right: 0; background: linear-gradient(180deg, #c4424b, #93202c); transform-origin: right center; }
+.vb-yes + .vb-no { box-shadow: -1px 0 0 rgba(255, 248, 230, .95); }
+.evw.fresh .vb-yes, .evw.fresh .vb-no { animation: vb-grow .7s cubic-bezier(.2, .9, .3, 1) .15s both; }
 @keyframes vb-grow { from { transform: scaleX(0); } }
 /* 过半线：赞成要越过它才发车 */
 .vb-mid { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--ink); box-shadow: 0 0 0 1px rgba(255, 248, 230, .85); }
@@ -1383,7 +1407,7 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 }
 .ev-end .ee-title { display: flex; justify-content: center; align-items: center; gap: 8px; font: 800 20px/1.4 var(--serif); letter-spacing: 4px; text-shadow: 0 1px 2px rgba(0, 0, 0, .5); }
 .ev-end .ee-title .ic { color: var(--gold-hi); }
-.ev-end .small { color: rgba(255, 255, 255, .92); }
+.ev-end .small { color: rgba(255, 255, 255, .92); text-wrap: balance; }
 .ev-end.good { background: radial-gradient(120% 140% at 50% 0%, #3f74bd, #1f4e8c 60%, #143563); }
 .ev-end.evil { background: radial-gradient(120% 140% at 50% 0%, #c43c45, #9e1b2a 60%, #680f1a); }
 
@@ -1544,10 +1568,10 @@ body.show-thoughts .thought { display: flex; }
 .pick .slot-shield path { fill: rgba(138, 106, 36, .07); stroke: #9a7a30; }
 .pick .slot.new .emb { animation: slot-pop .4s cubic-bezier(.2, 1.6, .4, 1) both; }
 @keyframes slot-pop { 0% { transform: scale(.3); opacity: 0; } 100% { transform: none; opacity: 1; } }
-.pick .cnt { font: 600 13px/1 var(--num); color: var(--ink-3); white-space: nowrap; }
-.pick .cnt b { font-size: 20px; color: var(--crimson-ink); }
+.act-side .pick .cnt { font: 600 13px/1 var(--num); color: var(--ink-3); white-space: nowrap; }
+.act-side .pick .cnt b { font-size: 20px; color: var(--crimson-ink); }
 .pick.full { background: rgba(47, 122, 69, .1); box-shadow: inset 0 0 0 1.5px rgba(47, 122, 69, .55); }
-.pick.full .cnt b { color: var(--vert-ink); }
+.act-side .pick.full .cnt b { color: var(--vert-ink); }
 
 .panel button { min-height: 46px; padding: 8px 20px; font-size: 15.5px; letter-spacing: 2px; white-space: nowrap; }
 .panel button .ic { width: 18px; height: 18px; }
@@ -1834,7 +1858,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
 .eb-score b:first-child { color: var(--royal-ink); }
 .eb-score b:last-child { color: var(--crimson-ink); }
 .eb-score i { font-style: normal; color: var(--ink-3); }
-.end-reason { text-align: center; color: var(--ink-2); font-weight: 600; margin: 10px 0 0 !important; }
+.end-reason { text-align: center; color: var(--ink-2); font-weight: 600; margin: 10px 0 0 !important; text-wrap: balance; }
 /* 练习数据：一个数字 + 一句解释；绿 = 做得好，红 = 要改进 */
 .end-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 2px 0 4px; }
 .tile {
@@ -1859,6 +1883,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
 .reveal-table th, .reveal-table td { border-bottom: 1px solid rgba(138, 106, 36, .3); padding: 5px 8px; text-align: left; white-space: nowrap; }
 .reveal-table th { color: var(--ink-3); font-weight: 700; font-size: 12.5px; letter-spacing: .5px; border-bottom: 1.5px solid var(--gold-deep); }
 .reveal-table td.num { font-variant-numeric: tabular-nums; }
+.reveal-table td.brk { display: none; }
 .reveal-table tr.me-row td { background: rgba(201, 162, 74, .22); font-weight: 700; }
 .who-cell { display: inline-flex; align-items: center; gap: 8px; }
 .who-cell small { font-size: 12px; color: var(--ink-3); }
@@ -1878,9 +1903,8 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
 .end-actions { display: flex; align-items: center; gap: 10px; }
 .end-actions button { min-height: 46px; padding: 8px 18px; font-size: 15px; }
 .end-actions .ic { width: 18px; height: 18px; }
-#end-thoughts { margin-right: auto; color: var(--arcane-ink); border-color: rgba(106, 63, 160, .5); }
-#end-thoughts .ic { color: var(--arcane); }
-#end-thoughts:hover:not(:disabled) { background: rgba(106, 63, 160, .08); border-color: var(--arcane); }
+#end-thoughts { margin-right: auto; }
+#end-thoughts .ic { color: var(--arcane-ink); }
 /* 复盘：皮革底金字的次级按钮（比内心独白显眼，比“再来一局”低一级） */
 #modal button.coach {
   color: var(--cream); border-color: var(--gold-deep);
@@ -1946,6 +1970,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
 .rv-role { font: 800 32px/1.2 var(--serif); letter-spacing: 8px; text-indent: 8px; color: var(--gold-hi); text-shadow: 0 2px 4px rgba(0, 0, 0, .6); }
 /* 阵营：羊皮纸缎带，蓝 / 红字 */
 .rv-team {
+  display: inline-block; white-space: nowrap;
   font-size: 12.5px; font-weight: 700; line-height: 21px; padding: 0 14px; letter-spacing: 2px;
   background: linear-gradient(180deg, #f8ebc6, #dcc185); color: var(--royal-ink);
   clip-path: polygon(0 0, 100% 0, calc(100% - 6px) 50%, 100% 100%, 0 100%, 6px 50%);
@@ -2040,7 +2065,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   font-size: 13px; font-weight: 700; padding: 1px 12px; border-radius: 999px; color: var(--gold-hi);
   background: rgba(0, 0, 0, .32); box-shadow: inset 0 0 0 1px rgba(236, 208, 138, .5);
 }
-.fn-sub { margin: 8px 0 0; font-size: 13.5px; line-height: 1.6; max-width: 30em; }
+.fn-sub { margin: 8px 0 0; font-size: 13.5px; line-height: 1.6; max-width: 30em; text-wrap: balance; }
 .fn-hint { position: relative; font-size: 12.5px; letter-spacing: 2px; color: var(--cream-2); animation: fade-in .4s ease-out .9s both; }
 @keyframes fn-unfurl { 0% { transform: scaleY(.05); opacity: 0; } 60% { transform: scaleY(1.03); opacity: 1; } 100% { transform: none; } }
 @keyframes fn-title { 0% { transform: scale(1.5); opacity: 0; } 100% { transform: none; opacity: 1; } }
@@ -2054,6 +2079,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .plq-sub { font-size: 12.5px; }
   .qc-row { gap: 6px; }
   .qcard { --cw: 44px; }
+  .mo.compact .qcard { --cw: 36px; }
   .qc-front { font-size: 11px; letter-spacing: 1px; text-indent: 1px; }
   .rv-card { width: 244px; }
   .fn-field { padding: 20px 16px 58px; }
@@ -2068,6 +2094,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .plq-sub { font-size: 14.5px; }
   .qc-kick { font-size: 13px; }
   .qcard { --cw: 66px; }
+  .mo.compact .qcard { --cw: 52px; }
   .qc-front { font-size: 14px; }
   .rv-card { width: 284px; }
   .rv-art { width: 128px; height: 158px; }
@@ -2088,6 +2115,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .qc-kick { font-size: 16px; padding: 4px 18px; }
   .qc-row { gap: 12px; }
   .qcard { --cw: 86px; }
+  .mo.compact .qcard { --cw: 68px; }
   .qc-front { font-size: 17px; }
   .rv-card { width: 340px; padding: 24px 22px 20px; gap: 8px; }
   .rv-kicker { font-size: 14.5px; }
@@ -2151,14 +2179,14 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
 /* 窄桌面（圆桌那一栏只有 500 多像素宽）：座位再紧凑一号；9 人以上宁可让左栏滚动，也不把座位挤在一起 */
 @media (min-width: 901px) and (max-width: 1180px) {
   .table-wrap:has(> .table.crowded) { min-height: 400px; }
-  .table { --sh: 44px; --seat-w: 94px; --num-d: 19px; --num-f: 11.5px; --seat-up: 43px; --seat-down: 70px; --seat-side: 48px; --info-w: 84px; --rim-gx: 44px; --rim-gy: 10px; --ring-aspect: 2.3; }
+  .table { --sh: 44px; --seat-w: 94px; --num-d: 19px; --num-f: 11.5px; --seat-up: 43px; --seat-down: 70px; --seat-side: 48px; --info-w: 100px; --rim-gx: 44px; --rim-gy: 10px; --ring-aspect: 2.3; }
   .seat .name { font-size: 12px; padding: 0 6px; }
   .label { font-size: 10.5px; line-height: 16px; padding: 0 8px; }
   .mark { font-size: 10.5px; line-height: 15px; padding: 0 4px; }
   .table-center { font-size: 12px; }
   .tc-kicker { font-size: 10.5px; letter-spacing: 1px; }
   .table-center .phase { font-size: 15.5px; letter-spacing: 1px; }
-  .table-center .phase.pick { font-size: 17px; letter-spacing: 1px; }
+  .table-center .phase.tc-pick { font-size: 17px; letter-spacing: 1px; }
   .tc-slots .emb { --ew: 25px; --ed: 13px; --ef: 9px; }
   .tc-slots .slot-shield { width: 25px; height: 29px; }
 }
@@ -2194,7 +2222,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .table-center { font-size: 15px; }
   .tc-kicker { font-size: 12.5px; }
   .table-center .phase { font-size: 21px; }
-  .table-center .phase.pick { font-size: 23px; }
+  .table-center .phase.tc-pick { font-size: 23px; }
   .tc-slots .emb { --ew: 36px; --ed: 17px; --ef: 11px; }
   .tc-slots .slot-shield { width: 36px; height: 42px; }
   .quest-track { --q: 46px; gap: 16px; }
@@ -2229,9 +2257,9 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .table-center { font-size: 18px; width: min(calc(var(--ox, 34%) * 1.3), 500px); }
   .tc-kicker { font-size: 15px; }
   .table-center .phase { font-size: 28px; }
-  .table-center .phase.pick { font-size: 30px; }
-  .table-center .cnt { font-size: 20px; }
-  .table-center .cnt b { font-size: 30px; }
+  .table-center .phase.tc-pick { font-size: 30px; }
+  .tc-cnt { font-size: 20px; }
+  .tc-cnt b { font-size: 30px; }
   .tc-slots .emb { --ew: 46px; --ed: 21px; --ef: 13px; }
   .tc-slots .slot-shield { width: 46px; height: 53px; }
   .quest-track { --q: 54px; gap: 18px; }
@@ -2287,6 +2315,56 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .ro-k { line-height: 28px; }
   .identity .peek { font-size: 15px; min-height: 36px; padding: 2px 14px 2px 11px; }
   .identity .peek .ic { width: 18px; height: 18px; }
+  /* 行动栏也跟着圆桌放大（不然底下是一条缩在 1440 尺寸的窄条） */
+  .action-bar { padding: 14px 28px 15px; gap: 22px; }
+  .action-bar.your-turn { padding-top: 24px; }
+  .panel { grid-template-columns: minmax(300px, 440px) minmax(0, 1fr) auto; padding: 17px 22px 16px 18px; gap: 10px 28px; }
+  .turn-tag { top: -16px; height: 30px; padding: 0 22px 0 21px; font-size: 16px; }
+  .act-head { gap: 14px; }
+  .act-seal { width: 52px; height: 52px; }
+  .act-seal .ic { width: 27px; height: 27px; }
+  .act-title { font-size: 23px; }
+  .act-title .em { font-size: 28px; }
+  .act-title .label { font-size: 16px; line-height: 26px; }
+  .act-sub, .tl-p, .waiting { font-size: 17.5px; }
+  .act-sub .scs .sc { font-size: 15px; line-height: 25px; }
+  .panel .alert { font-size: 15.5px; }
+  .act-note, .pick-k, .tl-k, .claim-k { font-size: 15.5px; }
+  .act-main textarea { height: 84px; font-size: 18px; }
+  .panel .quick { gap: 8px; }
+  .panel .quick button { min-height: 40px; padding: 3px 17px; font-size: 16.5px; }
+  .panel button { min-height: 58px; padding: 10px 26px; font-size: 19px; }
+  .panel button .ic { width: 22px; height: 22px; }
+  .panel button.pass { min-width: 96px; }
+  .act-side { gap: 16px; }
+  .act-side.vote button { min-width: 160px; min-height: 64px; font-size: 22px; }
+  .act-side.vote button .ic { width: 24px; height: 24px; }
+  .panel .card-btn { width: 132px; min-height: 104px; font-size: 21px; }
+  .panel .card-btn .ic { width: 34px; height: 34px; }
+  .panel .card-btn small { font-size: 13.5px; }
+  .pick { min-height: 64px; padding: 4px 16px 4px 14px; }
+  .pick .slot { width: 38px; height: 52px; }
+  .pick .slot .emb { --ew: 36px; --ed: 17px; --ef: 11px; }
+  .pick .slot-shield { width: 34px; height: 39px; }
+  .act-side .pick .cnt { font-size: 16px; }
+  .act-side .pick .cnt b { font-size: 25px; }
+  .tl-p .emb { --ew: 25px; }
+  .pill-radio span { min-height: 44px; padding: 0 19px; font-size: 17px; }
+  .w-who .emb { --ew: 32px; --ed: 17px; --ef: 11.5px; }
+  .w-tip { font-size: 16.5px; }
+  .w-tip-k { font-size: 15.5px; }
+  .w-tip-k .ic { width: 17px; height: 17px; }
+  .w-ink { padding: 8px 10px; }
+  .w-ink i { width: 6px; height: 6px; }
+  .waiting { min-height: 52px; }
+  .hint-btn { min-height: 58px; padding: 10px 22px; font-size: 19px; }
+  .hint-btn .ic { width: 25px; height: 25px; }
+  .end-seal { width: 52px; height: 52px; }
+  .end-seal .ic { width: 26px; height: 26px; }
+  .end-title { font-size: 22px; }
+  .end-title small { font-size: 15px; }
+  .end-sub { font-size: 16px; }
+  .end-btns button { min-height: 54px; padding: 10px 22px; font-size: 18px; }
 }
 
 /* =====================================================================
@@ -2400,8 +2478,8 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .table-center { width: min(calc(var(--ox, 34%) * 1.45), 230px); font-size: 12px; line-height: 1.45; }
   .tc-kicker { font-size: 10.5px; letter-spacing: 1px; }
   .table-center .phase { font-size: 15px; letter-spacing: 1px; }
-  .table-center .phase.pick { font-size: 16px; letter-spacing: 1px; }
-  .table-center .cnt b { font-size: 18px; }
+  .table-center .phase.tc-pick { font-size: 16px; letter-spacing: 1px; }
+  .tc-cnt b { font-size: 18px; }
   .tc-slots { gap: 3px 5px; margin-top: 5px; }
   .tc-slots .emb { --ew: 25px; --ed: 13px; --ef: 9px; }
   .tc-slots .slot-shield { width: 25px; height: 29px; }
@@ -2436,57 +2514,6 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   /* 手机行动栏：卡片占满宽度，教练按钮收到右上角；按钮是整宽的拇指按钮 */
   .action-bar { padding: 10px 10px calc(10px + env(safe-area-inset-bottom)); }
   .action-bar.your-turn { padding-top: 17px; }
-  .hint-btn { position: absolute; top: 9px; right: 10px; z-index: 3; min-height: 40px; padding: 4px 11px 4px 9px; gap: 4px; font-size: 13px; letter-spacing: 1px; }
-  .hint-btn .ic { width: 17px; height: 17px; }
-  .action-bar.your-turn .hint-btn { top: 23px; right: 17px; }
-  .panel { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "main" "side"; padding: 13px 11px 11px; gap: 8px; }
-  /* 手机上圆桌已经标出了可选的人和车上的人，行动栏里不再重复，省出高度 */
-  .panel-lady_choose .act-main, .panel-quest .team-line { display: none; }
-  .action-bar:not(.no-hint) .act-head .alert { width: auto; max-width: none; margin: 7px -78px 0 -43px; }
-  .panel::before { inset: 4px; }
-  .turn-tag { left: 10px; }
-  .action-bar:not(.no-hint) .act-head { padding-right: 78px; min-height: 40px; }
-  .act-head { gap: 9px; }
-  .act-seal { width: 34px; height: 34px; }
-  .act-seal .ic { width: 18px; height: 18px; }
-  .act-title { font-size: 15.5px; letter-spacing: .5px; }
-  .act-title .em { font-size: 19px; }
-  .act-sub { font-size: 12.5px; }
-  .panel .quick {
-    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-right: 22px; margin: 0 -11px 0 0;
-    -webkit-mask-image: linear-gradient(90deg, #000 84%, transparent); mask-image: linear-gradient(90deg, #000 84%, transparent);
-  }
-  .panel .quick::-webkit-scrollbar { display: none; }
-  .panel .quick button { flex: 0 0 auto; }
-  .act-main textarea { height: 46px; min-height: 44px; font-size: 16px; resize: none; transition: height .2s; }
-  .act-main textarea:focus { height: 84px; }
-  .act-side { gap: 8px; justify-content: stretch; flex-wrap: wrap; }
-  .act-side > button { flex: 1 1 120px; min-width: 0; }
-  .act-side .pick { flex: 0 1 auto; margin-right: 0; padding: 3px 9px; gap: 6px; }
-  .pick .slots { gap: 3px; }
-  .pick .slot { width: 26px; }
-  .pick .slot .emb { --ew: 25px; --ed: 13px; --ef: 9px; }
-  .pick .slot-shield { width: 24px; height: 28px; }
-  .panel button.pass { flex: 0 0 84px; }
-  .act-side.vote button { min-width: 0; letter-spacing: 3px; }
-  .panel .card-btn { width: auto; flex: 1 1 0; min-height: 74px; }
-  .team-line { gap: 5px 8px; }
-  .tl-long { display: none; }
-  .tl-p { font-size: 13px; padding: 2px 8px 2px 4px; }
-  .waiting { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 10px; row-gap: 7px; }
-  .action-bar:not(.no-hint) .w-who { padding-right: 76px; }
-  .w-who { min-height: 40px; font-size: 13.5px; gap: 3px 8px; }
-  .w-ps { display: none; } /* 多人同时思考：圆桌上每个座位已有墨点，这里只写人数 */
-  .w-tip {
-    grid-column: 1 / -1; margin: 0; max-width: none; padding: 7px 0 0; border-left: 0; border-top: 1px dashed rgba(201, 162, 74, .28);
-    font-size: 12.5px; line-height: 1.5;
-  }
-  .w-tip-t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-  .end-row { gap: 10px 12px; }
-  .end-text { flex-basis: calc(100% - 60px); }
-  .end-btns { flex: 1 1 100%; }
-  .end-btns button { flex: 1 1 0; }
-  .end-row .end-text { padding-right: 0; }
 
   dialog, dialog[data-kind="end"] { width: calc(100vw - 24px); max-height: calc(100dvh - 48px); }
   dialog::before, dialog::after { left: -8px; right: -8px; height: 14px; }
@@ -2514,12 +2541,181 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .ts { font-size: 11.5px; }
   .review-box:not(:empty) { padding: 2px 10px 10px; margin-left: -4px; margin-right: -4px; }
   .review-box .letter { padding-left: 13px; }
-  /* 结算按钮：一行三个——内心独白只留图标，复盘和再来一局平分 */
-  .end-actions { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  /* 结算按钮：两行——上面“内心独白”和“教练复盘”平分，下面是整宽的“再来一局” */
+  .end-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .end-actions button { min-width: 0; padding: 8px 8px; font-size: 14.5px; gap: 5px; }
-  #end-thoughts { width: 46px; padding: 0; margin: 0; }
-  #end-thoughts span { display: none; }
-  #end-again { min-width: 0; letter-spacing: 1px; font-size: 15.5px; padding: 8px 8px; }
+  #end-thoughts { margin: 0; }
+  #end-thoughts .et-long { display: none; }
+  #end-again { grid-column: 1 / -1; min-width: 0; letter-spacing: 3px; font-size: 16px; padding: 8px 8px; }
+  /* 身份揭晓：每人一张两行的小卡片（名字 + 身份 / 各项数据），不用左右滑 */
+  .table-scroll { overflow: visible; margin: 0; padding: 0; }
+  .reveal-table thead { display: none; }
+  .reveal-table, .reveal-table tbody { display: block; }
+  .reveal-table tr { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 14px; padding: 7px 6px 8px; border-bottom: 1px solid rgba(138, 106, 36, .3); }
+  .reveal-table tr.me-row { background: rgba(201, 162, 74, .22); }
+  .reveal-table th, .reveal-table td, .reveal-table tr.me-row td { display: block; padding: 0; border: 0; background: none; }
+  .reveal-table td.who { flex: 1 1 auto; min-width: 0; }
+  .reveal-table td.role { flex: 0 0 auto; }
+  .reveal-table td.brk { display: block; flex: 0 0 100%; height: 0; }
+  .reveal-table tr td.na, .reveal-table tr.me-row td.na { display: none; }
+  .reveal-table td[data-k] { font-size: 13.5px; font-weight: 700; white-space: nowrap; }
+  .reveal-table td[data-k]::before { content: attr(data-k); margin-right: 5px; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+}
+
+/* =====================================================================
+   单栏行动卡片：手机竖屏，以及矮的横屏（手机横过来、7 寸平板、矮的笔记本窗口）
+   教练按钮收到右上角；按钮是整宽的拇指按钮
+   ===================================================================== */
+@media (max-width: 560px), (orientation: landscape) and (max-height: 620px) and (min-width: 600px) {
+  .hint-btn { position: absolute; top: 9px; right: 10px; z-index: 3; min-height: 40px; padding: 4px 11px 4px 9px; gap: 4px; font-size: 13px; letter-spacing: 1px; }
+  .hint-btn .ic { width: 17px; height: 17px; }
+  .action-bar.your-turn .hint-btn { top: 23px; right: 17px; }
+  .panel { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "main" "side"; padding: 13px 11px 11px; gap: 8px; }
+  /* 手机上圆桌已经标出了可选的人和车上的人，行动栏里不再重复，省出高度 */
+  .panel-lady_choose .act-main, .panel-quest .team-line { display: none; }
+  .action-bar:not(.no-hint) .act-head .alert { width: auto; max-width: none; margin: 7px -78px 0 -43px; }
+  .panel::before { inset: 4px; }
+  .turn-tag { left: 10px; }
+  .action-bar:not(.no-hint) .act-head { padding-right: 78px; min-height: 40px; }
+  .act-head { gap: 9px; }
+  .act-seal { width: 34px; height: 34px; }
+  .act-seal .ic { width: 18px; height: 18px; }
+  .act-title { font-size: 15.5px; letter-spacing: .5px; }
+  .act-title .em { font-size: 19px; }
+  .act-sub { font-size: 12.5px; }
+  .panel .quick {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-right: 22px; margin: 0 -11px 0 0;
+    -webkit-mask-image: linear-gradient(90deg, #000 84%, transparent); mask-image: linear-gradient(90deg, #000 84%, transparent);
+  }
+  .panel .quick::-webkit-scrollbar { display: none; }
+  .panel .quick button { flex: 0 0 auto; }
+  .act-main textarea { height: 46px; min-height: 44px; font-size: 16px; resize: none; transition: height .2s; }
+  .act-main textarea:focus { height: 84px; }
+  .act-side { gap: 8px; justify-content: stretch; flex-wrap: wrap; }
+  .act-side.with-pick { flex-direction: row; align-items: center; }
+  .act-side > button { flex: 1 1 120px; min-width: 0; }
+  .act-side .pick { flex: 0 1 auto; margin-right: 0; padding: 3px 9px; gap: 6px; }
+  .pick .slots { gap: 3px; }
+  .pick .slot { width: 26px; }
+  .pick .slot .emb { --ew: 25px; --ed: 13px; --ef: 9px; }
+  .pick .slot-shield { width: 24px; height: 28px; }
+  .panel button.pass { flex: 0 0 84px; }
+  .act-side.vote button { min-width: 0; letter-spacing: 3px; }
+  .panel .card-btn { width: auto; flex: 1 1 0; min-height: 74px; }
+  .team-line { gap: 5px 8px; }
+  .tl-long { display: none; }
+  .tl-p { font-size: 13px; padding: 2px 8px 2px 4px; }
+  .waiting { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 10px; row-gap: 7px; }
+  .action-bar:not(.no-hint) .w-who { padding-right: 76px; }
+  .w-who { min-height: 40px; font-size: 13.5px; gap: 3px 8px; }
+  .w-ps { display: none; } /* 多人同时思考：圆桌上每个座位已有墨点，这里只写人数 */
+  .w-tip {
+    grid-column: 1 / -1; margin: 0; max-width: none; padding: 7px 0 0; border-left: 0; border-top: 1px dashed rgba(201, 162, 74, .28);
+    font-size: 12.5px; line-height: 1.5;
+  }
+  .w-tip-t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .end-row { gap: 10px 12px; }
+  .end-text { flex-basis: calc(100% - 60px); }
+  .end-btns { flex: 1 1 100%; }
+  .end-btns button { flex: 1 1 0; }
+  .end-row .end-text { padding-right: 0; }
+}
+
+/* 矮屏：行动卡片再收紧——发言时“过 / 发言”竖排在输入框右边；
+   发言和投票不再重复列出提名的队伍（桌上金光和桌心都标着） */
+@media (max-width: 560px) and (max-height: 760px), (orientation: landscape) and (max-height: 620px) and (min-width: 600px) {
+  .panel-speak { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "head head" "main side"; column-gap: 10px; }
+  .panel-speak .act-sub, .panel-vote .act-main { display: none; }
+  .panel-speak .act-side { flex-direction: column; flex-wrap: nowrap; align-items: stretch; align-self: end; gap: 7px; }
+  .panel-speak .act-side > button, .panel-speak button.pass { flex: 0 0 auto; width: 84px; min-height: 42px; padding: 6px 10px; }
+  .act-main textarea { height: 42px; min-height: 40px; }
+  .act-main textarea:focus { height: 64px; }
+  .act-side.vote { flex-wrap: nowrap; }
+  .act-side.vote button { flex: 1 1 0; min-height: 48px; }
+  .panel .card-btn { min-height: 64px; }
+  .panel .alert { margin-top: 5px; }
+}
+/* 小屏手机、9 人以上：桌子压扁一点，整圈座位能放进吸底行动栏上方 */
+@media (max-width: 560px) and (max-height: 760px) {
+  .table.crowded { aspect-ratio: 1 / 1.3; }
+}
+
+/* =====================================================================
+   矮的横屏：圆桌占满左栏的高度；右栏上面是行动卡片，下面是对局记录。
+   顶栏收成一行（品牌 + 火漆 + 按钮）。身份卡在圆桌下方，左栏里往下滚就是
+   ===================================================================== */
+@media (orientation: landscape) and (max-height: 620px) and (min-width: 600px) {
+  body { background-attachment: scroll; }
+  #game {
+    height: 100vh; height: 100dvh; min-height: 0;
+    grid-template-columns: minmax(0, 1.25fr) minmax(270px, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: "top top" "left dock" "left log";
+  }
+  .topbar { grid-area: top; flex-wrap: nowrap; gap: 12px; padding: 5px 12px 7px; }
+  .brand { font-size: 18px; letter-spacing: 3px; gap: 7px; }
+  .brand-crest { width: 26px; height: 28px; }
+  .tracks { order: 0; flex: 1 1 auto; width: auto; justify-content: center; gap: 18px; padding: 0; }
+  .track-group .track-label { display: none; }
+  .quest-track { --q: 34px; gap: 9px; }
+  .quest .two, .quest .qf { font-size: 9.5px; padding: 2px 4px; }
+  #usage { display: none; }
+  .top-actions { margin-left: 0; gap: 6px; }
+  .top-btn { min-height: 38px; padding: 4px 10px 4px 8px; font-size: 13px; }
+  .board { display: contents; }
+  .left { grid-area: left; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 4px 12px 10px; gap: 10px; }
+  .table-wrap { flex: 0 0 100%; min-height: 0; }
+  .table-wrap::before { inset: 0; }
+  .table, .table.crowded {
+    aspect-ratio: auto; height: 100%;
+    --sh: 46px; --seat-w: 96px; --num-d: 20px; --num-f: 12px; --seat-up: 44px; --seat-down: 72px;
+    --seat-side: 48px; --info-w: 88px; --rim-gx: 44px; --rim-gy: 10px; --ring-aspect: 2.2;
+  }
+  .right { grid-area: log; max-height: none; min-height: 0; margin: 2px 12px 12px 8px; }
+  .action-bar {
+    grid-area: dock; position: relative; bottom: auto; z-index: 4; margin: 8px 12px 8px 8px; padding: 8px; border: 0; border-radius: 6px;
+    box-shadow: inset 0 0 0 1px rgba(201, 162, 74, .4), 0 6px 18px rgba(0, 0, 0, .4);
+  }
+  .action-bar::before { display: none; }
+  .action-bar.your-turn { padding-top: 16px; box-shadow: inset 0 0 0 1.5px var(--gold-hi), 0 6px 22px rgba(236, 190, 100, .18); }
+  .action-bar.your-turn .hint-btn { top: 22px; right: 15px; }
+  .identity { padding: 10px 12px; }
+  .identity .secret { grid-template-columns: 58px minmax(0, 1fr); gap: 12px; }
+  .id-art { width: 58px; height: 78px; }
+  .id-art .emblem { width: 36px; height: 36px; margin-top: -10px; }
+  .identity .role { font-size: 19px; }
+  .identity .ability { font-size: 12.5px; }
+  dialog, dialog[data-kind="end"] { max-height: calc(100dvh - 30px); }
+  .modal-head { padding: 12px 56px 8px; }
+  .modal-head h2 { font-size: 19px; }
+  #modal-close { top: 6px; }
+  .modal-body { padding-top: 8px; }
+  .modal-foot { padding: 8px 24px 14px; }
+}
+/* 手机横过来（很矮）：座位、名牌再小一号 */
+@media (orientation: landscape) and (max-height: 460px) and (min-width: 600px) {
+  .table, .table.crowded {
+    --sh: 38px; --seat-w: 82px; --num-d: 17px; --num-f: 11px; --seat-up: 36px; --seat-down: 60px;
+    --seat-side: 42px; --info-w: 76px; --rim-gx: 34px; --rim-gy: 8px; --ring-aspect: 2.3;
+  }
+  .seat .name { font-size: 11.5px; padding: 0 5px; line-height: 1.45; }
+  .seat .name small { display: none; }
+  .label { font-size: 10px; line-height: 15px; padding: 0 7px; }
+  .mark { font-size: 10px; line-height: 14px; padding: 0 4px; }
+  .labels { margin-top: 1px; }
+  .table-center { font-size: 11.5px; line-height: 1.4; }
+  .tc-kicker { font-size: 10.5px; letter-spacing: 1px; }
+  .table-center .phase { font-size: 14.5px; letter-spacing: 1px; }
+  .table-center .phase.tc-pick { font-size: 15px; letter-spacing: 1px; }
+  .tc-cnt b { font-size: 17px; }
+  .tc-slots { gap: 2px 4px; margin-top: 4px; }
+  .tc-slots .emb { --ew: 22px; --ed: 12px; --ef: 8.5px; }
+  .tc-slots .slot-shield { width: 22px; height: 26px; }
+  .plq { min-width: 180px; padding: 20px 14px 9px; }
+  .plq-title { font-size: 21px; letter-spacing: 4px; text-indent: 4px; }
+  .qcard { --cw: 42px; }
+  .mo.compact .qcard { --cw: 34px; }
+  .rv-card { width: 236px; }
 }
 
 /* 小屏手机：火漆和宝石再收紧一点，一行放得下 */
@@ -2557,7 +2753,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
     scroll-behavior: auto !important;
   }
   .dots::after { content: "…"; animation: none !important; }
-  .ld-ic, .evw.fresh .vb-yes { animation: none !important; }
+  .ld-ic, .evw.fresh .vb-yes, .evw.fresh .vb-no { animation: none !important; }
   .ts-track, .ts-track i { transition: none !important; }
   .avatar .think i, .w-ink i { opacity: 1; animation: none !important; }
   .panel.enter, .panel.enter::after, .panel.enter .turn-tag, .w-tip-t.in, .pick .slot.new .emb { animation: none !important; }
