@@ -703,8 +703,9 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .table-center .phase.evil-text, .table-center .win-evil { color: #ff9c94; }
 .table-center .win-good { color: #a9c8f5; }
 .table-center .tc-line { color: var(--cream); }
-.table-wrap:has(.stamp) .table-center { opacity: 0; }
 .table-center .phase.pick { font-size: 20px; letter-spacing: 3px; }
+/* 桌心标题和行动栏的“已选”框（.pick）同名：桌心这里不要那个框 */
+.table-center .phase.pick { display: block; min-height: 0; padding: 0; border-radius: 0; background: none; box-shadow: none; }
 .table-center .cnt { font: 700 15px var(--num); letter-spacing: 0; color: var(--cream-2); margin-left: 4px; white-space: nowrap; }
 .table-center .cnt b { font-size: 22px; color: var(--gold-hi); }
 .table-center .cnt.done b { color: #b8f0c6; }
@@ -921,26 +922,183 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .emb-md { --ew: 40px; --ed: 18px; --ef: 11.5px; }
 .emb-lg { --ew: 54px; --ed: 22px; --ef: 13.5px; }
 
-/* 时刻：桌面中央的印章 */
-.moment { position: absolute; left: 50%; top: var(--cy, 50%); transform: translate(-50%, -50%); z-index: 6; pointer-events: none; }
-.stamp {
-  display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 190px;
-  padding: 12px 26px 12px; border-radius: 12px; text-align: center; color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
-  border: 2px solid var(--gold);
-  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, .18), inset 0 0 0 4px rgba(255, 230, 170, .35), 0 16px 40px rgba(0, 0, 0, .6);
-  animation: stamp-in .5s cubic-bezier(.2, 1.4, .4, 1) both, stamp-out .35s ease-in calc(var(--ms) - 380ms) forwards;
+/* =====================================================================
+   时刻：圆桌上的印章、任务翻牌、湖中仙女、刺杀聚光（app.js 的 MOMENTS）
+   整层不接收点击：时刻进行中照样能点座位和行动栏
+   ===================================================================== */
+.moment { position: absolute; inset: 0; z-index: 6; pointer-events: none; overflow-x: clip; } /* 边上座位的光环不撑出横向滚动 */
+.mo-wrap { position: absolute; inset: 0; }
+.mo-wrap.out { animation: fade-out .26s ease-in forwards; }
+.mo {
+  position: absolute; left: 50%; top: var(--cy, 50%);
+  transform: translate(-50%, -50%) scale(var(--mo-s, 1));
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  transition: transform .26s ease-in;
 }
-.stamp b { font: 800 26px/1.25 var(--serif); letter-spacing: 5px; text-indent: 5px; }
-.stamp small { font-size: 13px; color: rgba(255, 255, 255, .92); }
-.stamp .st-ic { display: grid; place-items: center; width: 40px; height: 40px; margin: -34px 0 4px; border-radius: 50%; background: inherit; box-shadow: 0 0 0 2px var(--gold), 0 4px 10px rgba(0, 0, 0, .4); }
-.stamp .st-ic .ic { width: 22px; height: 22px; }
-.stamp.yes { background: radial-gradient(120% 130% at 50% 0%, #4d9b64, #276b3b 60%, #1a4d2a); }
-.stamp.no { background: radial-gradient(120% 130% at 50% 0%, #c4434b, #8e1824 60%, #62101a); }
-.stamp.good { background: radial-gradient(120% 130% at 50% 0%, #4f86d0, #1f4e8c 60%, #143563); }
-.stamp.evil { background: radial-gradient(120% 130% at 50% 0%, #cc4850, #9e1b2a 60%, #680f1a); }
-@keyframes stamp-in { 0% { transform: scale(1.8) rotate(-8deg); opacity: 0; } 60% { transform: scale(.95) rotate(1deg); opacity: 1; } 100% { transform: none; opacity: 1; } }
-@keyframes stamp-out { to { transform: scale(.92) translateY(-8px); opacity: 0; } }
+.mo-wrap.out .mo { transform: translate(-50%, -50%) scale(calc(var(--mo-s, 1) * .94)) translateY(-8px); }
+/* 时刻和身份牌出现时，桌心的文字让开 */
+.table-wrap:has(.mo-wrap:not(.out)) .table-center, .table-wrap:has(.reveal:not(.out)) .table-center { opacity: 0; }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
+
+/* ---------- 印章：金框珐琅牌，顶上一枚圆形印记 ---------- */
+.plq {
+  --pa: #3c6fb8; --pb: #1f4e8c; --pc: #12305a;
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 212px; max-width: 320px; padding: 25px 26px 12px; border-radius: 12px;
+  text-align: center; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .55);
+  background:
+    radial-gradient(circle at 9px 9px, var(--gold-hi) 1.4px, transparent 2px),
+    radial-gradient(circle at calc(100% - 9px) 9px, var(--gold-hi) 1.4px, transparent 2px),
+    radial-gradient(circle at 9px calc(100% - 9px), var(--gold-hi) 1.4px, transparent 2px),
+    radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), var(--gold-hi) 1.4px, transparent 2px),
+    radial-gradient(130% 120% at 50% -10%, var(--pa), var(--pb) 58%, var(--pc));
+  border: 2px solid var(--gold);
+  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, .2), inset 0 0 0 4px rgba(255, 230, 170, .4), 0 0 0 1px rgba(0, 0, 0, .55), 0 18px 40px rgba(0, 0, 0, .65);
+  animation: plq-in .5s cubic-bezier(.2, 1.4, .4, 1) var(--t, 0ms) both;
+}
+.plq-seal {
+  position: absolute; top: -21px; left: 50%; transform: translateX(-50%);
+  width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  background: radial-gradient(circle at 35% 30%, var(--pa), var(--pb) 72%);
+  box-shadow: 0 0 0 2px var(--gold), 0 0 0 4px rgba(20, 12, 6, .65), 0 4px 10px rgba(0, 0, 0, .5);
+}
+.plq-seal .ic { width: 22px; height: 22px; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .5)); }
+.plq-kick { font-size: 12px; letter-spacing: 2px; color: #fff; }
+.plq-title { font: 800 26px/1.3 var(--serif); letter-spacing: 5px; text-indent: 5px; }
+.plq-sub { font-size: 13px; line-height: 1.55; }
+.plq-note {
+  margin-top: 5px; padding: 1px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  background: rgba(0, 0, 0, .3); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .25);
+}
+.plq-note.warn { color: #2a1c10; text-shadow: none; background: linear-gradient(180deg, #f2c26c, var(--amber)); box-shadow: 0 0 0 1px #5a3a08; }
+.plq-note.danger { background: linear-gradient(180deg, #c4434b, #8e1824); box-shadow: 0 0 0 1px #ffc2b8; }
+.plq.tone-yes { --pa: #3a7f4f; --pb: #276b3b; --pc: #173f24; }
+.plq.tone-no { --pa: #b23a42; --pb: #8e1824; --pc: #5a0f18; }
+.plq.tone-good { --pa: #3c6fb8; --pb: #1f4e8c; --pc: #12305a; }
+.plq.tone-evil { --pa: #b8404a; --pb: #9e1b2a; --pc: #5e0d17; }
+.plq.tone-lady { --pa: #2f7d9c; --pb: #1b5874; --pc: #0d3446; }
+@keyframes plq-in {
+  0% { transform: scale(1.7) rotate(-7deg); opacity: 0; }
+  55% { transform: scale(.95) rotate(1deg); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+
+/* ---------- 任务翻牌：扣着的羊皮纸任务牌（封着火漆），逐张翻开 ---------- */
+.qc-kick {
+  font-size: 12px; font-weight: 700; letter-spacing: 3px; text-indent: 3px; color: var(--cream); white-space: nowrap;
+  padding: 3px 14px; border-radius: 999px; background: rgba(20, 12, 6, .85);
+  box-shadow: 0 0 0 1px rgba(201, 162, 74, .55), 0 4px 10px rgba(0, 0, 0, .45);
+  animation: fade-in .25s ease-out both;
+}
+.qc-row { display: flex; gap: 9px; margin-bottom: 14px; perspective: 800px; }
+/* 宽而矮的桌面：牌在左、印章在右 */
+.mo.row { display: grid; grid-template-columns: auto auto; grid-template-areas: "kick plq" "cards plq"; align-items: center; justify-items: center; gap: 10px 20px; }
+.mo.row .qc-kick { grid-area: kick; align-self: end; }
+.mo.row .qc-row { grid-area: cards; align-self: start; margin: 0; }
+.mo.row .plq { grid-area: plq; margin-top: 12px; }
+.qcard { --cw: 56px; width: var(--cw); height: calc(var(--cw) * 1.4); animation: qc-deal .3s cubic-bezier(.2, 1.2, .4, 1) var(--d, 0ms) both; }
+.qc-in {
+  position: relative; width: 100%; height: 100%; transform-style: preserve-3d;
+  transform: rotateY(180deg); animation: qc-flip .32s cubic-bezier(.45, 0, .25, 1) var(--f, 0ms) both;
+}
+.qc-face {
+  position: absolute; inset: 0; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  -webkit-backface-visibility: hidden; backface-visibility: hidden;
+}
+.qc-back {
+  background:
+    repeating-linear-gradient(45deg, rgba(138, 106, 36, .09) 0 1px, transparent 1px 7px),
+    radial-gradient(circle at 50% 40%, #fbf1d6, #e8d3a0 68%, #c9a76a);
+  box-shadow: inset 0 0 0 2px rgba(138, 106, 36, .7), inset 0 0 0 4px rgba(255, 248, 225, .65), inset 0 0 0 5px rgba(138, 106, 36, .45), 0 6px 12px rgba(0, 0, 0, .55);
+}
+.qc-wax {
+  width: calc(var(--cw) * .48); height: calc(var(--cw) * .48); display: grid; place-items: center; color: #f6e2a2;
+  border-radius: 47% 53% 50% 50% / 53% 47% 53% 47%;
+  background: radial-gradient(circle at 35% 30%, #a77a3c, #6b4718 68%, #482e0d);
+  box-shadow: 0 0 0 2px rgba(107, 71, 24, .45), 0 2px 3px rgba(0, 0, 0, .45);
+}
+.qc-wax .ic { width: 58%; height: 58%; }
+.qc-front {
+  transform: rotateY(180deg); color: #fff; font: 700 12.5px/1 var(--sans); letter-spacing: 2px; text-indent: 2px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .55);
+  box-shadow: inset 0 0 0 2px var(--gold), inset 0 0 0 4px rgba(0, 0, 0, .22), 0 6px 14px rgba(0, 0, 0, .55);
+}
+.qc-front .ic { width: 42%; height: 42%; color: var(--gold-hi); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .5)); }
+.qc-front.ok { background: radial-gradient(120% 100% at 50% 0%, #3c6fb8, #1f4e8c 60%, #12305a); }
+.qc-front.bad {
+  background: radial-gradient(120% 100% at 50% 0%, #b8404a, #9e1b2a 60%, #5e0d17);
+  box-shadow: inset 0 0 0 2px #ffb0a8, inset 0 0 0 4px rgba(0, 0, 0, .22), 0 0 18px 4px rgba(212, 70, 75, .6), 0 6px 14px rgba(0, 0, 0, .55);
+}
+@keyframes qc-deal { from { opacity: 0; transform: translateY(-46px) rotate(-10deg) scale(.7); } }
+@keyframes qc-flip { from { transform: rotateY(0deg); } to { transform: rotateY(180deg); } }
+
+/* 点一下跳过：所有动画直接停在最终状态（牌全部翻开、印章落下） */
+.mo-wrap.skip .qcard, .mo-wrap.skip .qc-in, .mo-wrap.skip .qc-kick, .mo-wrap.skip .plq,
+.mo-wrap.skip .mo-ring, .mo-wrap.skip .mo-dagger { animation: none !important; }
+
+/* ---------- 座位上的光环、涟漪、匕首 ---------- */
+.mo-ring {
+  position: absolute; width: var(--r); height: var(--r); margin: calc(var(--r) / -2) 0 0 calc(var(--r) / -2);
+  border-radius: 50%; pointer-events: none;
+}
+.mo-ring.ripple, .mo-ring.lady, .mo-ring.mark { animation: ripple 1.35s ease-out var(--d, 0ms) both; }
+.mo-ring.lady { border: 2.5px solid #a8e2f5; box-shadow: 0 0 18px 4px rgba(63, 143, 174, .65), inset 0 0 12px rgba(168, 226, 245, .4); }
+.mo-ring.mark { border: 2.5px solid #ffb4a8; box-shadow: 0 0 18px 5px rgba(212, 70, 75, .6), inset 0 0 12px rgba(255, 150, 140, .4); }
+@keyframes ripple { 0% { transform: scale(.55); opacity: 0; } 18% { opacity: 1; } 100% { transform: scale(1.65); opacity: 0; } }
+/* 刺杀：红色虚线准星收拢到目标上 */
+.mo-ring.aim {
+  border: 2.5px dashed #ffb4a8;
+  box-shadow: 0 0 0 3px rgba(158, 27, 42, .45), 0 0 26px 8px rgba(212, 70, 75, .45), inset 0 0 18px rgba(255, 120, 110, .35);
+  animation: ring-close .55s cubic-bezier(.3, 1.3, .5, 1) both, ring-spin 6s linear .55s infinite;
+}
+.is-hit .mo-ring.aim {
+  border-style: solid; border-color: #ffd6cf;
+  box-shadow: 0 0 0 4px rgba(158, 27, 42, .75), 0 0 44px 16px rgba(212, 70, 75, .6), inset 0 0 22px rgba(255, 120, 110, .5);
+}
+.is-hit .mo-ring.aim::before {
+  content: ""; position: absolute; inset: -40%; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 170, 150, .9), rgba(212, 70, 75, .45) 38%, transparent 68%);
+  animation: burst .65s ease-out both;
+}
+.is-miss .mo-ring.aim { border-color: rgba(236, 224, 200, .55); box-shadow: 0 0 0 3px rgba(0, 0, 0, .35); animation-play-state: paused; }
+/* 落空时：真正的梅林亮起金色光环 */
+.mo-ring.merlin {
+  border: 3px solid #f6e2a2;
+  box-shadow: 0 0 0 3px rgba(31, 78, 140, .8), 0 0 36px 12px rgba(236, 208, 138, .55), inset 0 0 18px rgba(236, 208, 138, .45);
+  animation: ring-close .5s cubic-bezier(.3, 1.3, .5, 1) both;
+}
+.mo-ring.merlin::after {
+  content: "真正的梅林"; position: absolute; left: 50%; bottom: calc(100% + 2px); transform: translateX(-50%);
+  white-space: nowrap; font: 700 12px/20px var(--sans); letter-spacing: 1px; padding: 0 11px; color: #fff6dc;
+  background: linear-gradient(180deg, #24548f, #173e74);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 6px) 50%, 100% 100%, 0 100%, 6px 50%);
+}
+@keyframes ring-close { from { transform: scale(2.2); opacity: 0; } }
+@keyframes ring-spin { to { transform: rotate(360deg); } }
+@keyframes burst { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.35); opacity: 0; } }
+.mo-dagger {
+  position: absolute; width: var(--w); height: var(--w); margin: calc(var(--w) / -2) 0 0 calc(var(--w) / -2);
+  color: #fff3ee; transform: rotate(180deg);
+  filter: drop-shadow(0 0 5px rgba(212, 70, 75, .95)) drop-shadow(0 3px 3px rgba(0, 0, 0, .6));
+  animation: dagger-drop .6s cubic-bezier(.55, 0, .8, .25) both;
+}
+.mo-dagger .ic { display: block; width: 100%; height: 100%; }
+@keyframes dagger-drop { 0% { transform: translateY(-130px) rotate(180deg) scale(1.3); opacity: 0; } 30% { opacity: 1; } 100% { transform: rotate(180deg); opacity: 1; } }
+.is-hit .mo-dagger { animation: dagger-hit .35s ease-out both; }
+.is-miss .mo-dagger { animation: dagger-miss .5s ease-in both; }
+@keyframes dagger-hit { 0% { transform: rotate(180deg) scale(1.35); } 100% { transform: rotate(180deg); } }
+@keyframes dagger-miss { to { transform: translate(28px, 14px) rotate(250deg) scale(.85); opacity: 0; } }
+
+/* 聚光：圆桌和其他座位暗下去，只留目标（和落空时真正的梅林） */
+.table::before, .table::after { transition: filter .35s; }
+.table-wrap[data-spot] .table::before, .table-wrap[data-spot] .table::after { filter: brightness(.5) saturate(.7); }
+.table-wrap[data-spot] .seat { opacity: .3; filter: saturate(.2) brightness(.8); }
+.table-wrap[data-spot~="1"] .seat[data-seat="1"], .table-wrap[data-spot~="2"] .seat[data-seat="2"],
+.table-wrap[data-spot~="3"] .seat[data-seat="3"], .table-wrap[data-spot~="4"] .seat[data-seat="4"],
+.table-wrap[data-spot~="5"] .seat[data-seat="5"], .table-wrap[data-spot~="6"] .seat[data-seat="6"],
+.table-wrap[data-spot~="7"] .seat[data-seat="7"], .table-wrap[data-spot~="8"] .seat[data-seat="8"],
+.table-wrap[data-spot~="9"] .seat[data-seat="9"], .table-wrap[data-spot~="10"] .seat[data-seat="10"] { opacity: 1; filter: none; }
 
 /* =====================================================================
    身份卡：塔罗牌
@@ -1032,6 +1190,8 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .log::-webkit-scrollbar { width: 9px; }
 .log::-webkit-scrollbar-thumb { background: var(--parch-edge); border-radius: 9px; border: 2px solid var(--parch-100); }
 .evw.fresh { animation: ev-in .35s ease-out both; }
+/* 桌上还在揭晓（任务翻牌、刺杀、胜负）：这条记录先不显示，揭晓时再出现 */
+.evw.held { display: none; }
 @keyframes ev-in { from { opacity: 0; transform: translateY(8px); } }
 
 .ev { margin: 9px 0; font-size: 14.5px; line-height: 1.65; }
@@ -1493,58 +1653,210 @@ dialog::backdrop { background: radial-gradient(circle at 50% 40%, rgba(20, 12, 6
 #review-box:not(:empty) { margin-top: 10px; }
 
 /* =====================================================================
-   开局身份揭晓
+   开局身份揭晓：圆桌上方一张不透明的塔罗牌，约 2 秒后飞进身份卡
+   （只盖住圆桌区域，不挡对局记录和行动栏）
    ===================================================================== */
-.reveal {
-  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; align-content: center; gap: 14px;
-  pointer-events: none; perspective: 900px;
-  background: radial-gradient(circle at 50% 45%, rgba(20, 12, 6, .55), rgba(8, 5, 2, .8));
+.reveal { position: absolute; inset: 0; z-index: 7; display: grid; place-items: center; cursor: pointer; perspective: 1000px; }
+.reveal.out { pointer-events: none; }
+.rv-scrim {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(14, 8, 4, .88), rgba(14, 8, 4, .72) 58%, rgba(14, 8, 4, 0));
   animation: fade-in .25s ease-out both;
 }
-.reveal.out { animation: fade-out .3s ease-in both; }
-@keyframes fade-in { from { opacity: 0; } }
-@keyframes fade-out { to { opacity: 0; } }
 .rv-card {
-  --cut: #13274a;
-  width: 250px; min-height: 360px; padding: 22px 20px 20px; border-radius: 14px; text-align: center;
+  --cut: #13274a; --ca: #2f5a97; --cb: #0f1f3b;
+  position: relative; width: 264px; padding: 18px 18px 16px; border-radius: 14px; text-align: center;
   display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--cream);
   background:
     radial-gradient(circle at 14px 14px, var(--gold) 2px, transparent 2.6px),
     radial-gradient(circle at calc(100% - 14px) 14px, var(--gold) 2px, transparent 2.6px),
     radial-gradient(circle at 14px calc(100% - 14px), var(--gold) 2px, transparent 2.6px),
     radial-gradient(circle at calc(100% - 14px) calc(100% - 14px), var(--gold) 2px, transparent 2.6px),
-    radial-gradient(130% 100% at 50% 0%, #2f5a97, #0f1f3b);
-  box-shadow: 0 0 0 1px var(--gold-deep), inset 0 0 0 6px rgba(0, 0, 0, .25), inset 0 0 0 7px rgba(201, 162, 74, .6), 0 30px 80px rgba(0, 0, 0, .7), 0 0 60px rgba(236, 190, 100, .25);
+    radial-gradient(130% 100% at 50% 0%, var(--ca), var(--cb));
+  box-shadow: 0 0 0 1px var(--gold-deep), inset 0 0 0 6px rgba(0, 0, 0, .25), inset 0 0 0 7px rgba(201, 162, 74, .6),
+    0 30px 70px rgba(0, 0, 0, .75), 0 0 50px rgba(236, 190, 100, .22);
+  transform: scale(var(--rv-s, 1));
   animation: card-flip .55s cubic-bezier(.2, 1.1, .3, 1) both;
 }
-.reveal.evil .rv-card { --cut: #3a0d15; background:
-    radial-gradient(circle at 14px 14px, var(--gold) 2px, transparent 2.6px),
-    radial-gradient(circle at calc(100% - 14px) 14px, var(--gold) 2px, transparent 2.6px),
-    radial-gradient(circle at 14px calc(100% - 14px), var(--gold) 2px, transparent 2.6px),
-    radial-gradient(circle at calc(100% - 14px) calc(100% - 14px), var(--gold) 2px, transparent 2.6px),
-    radial-gradient(130% 100% at 50% 0%, #84232f, #2a0a10); }
-@keyframes card-flip { 0% { transform: rotateY(95deg) scale(.8); opacity: 0; } 100% { transform: none; opacity: 1; } }
-.rv-kicker { font-size: 12px; letter-spacing: 6px; color: var(--cream-2); }
+.reveal.evil .rv-card { --cut: #3a0d15; --ca: #84232f; --cb: #2a0a10; }
+@keyframes card-flip {
+  0% { transform: scale(var(--rv-s, 1)) rotateY(95deg) scale(.8); opacity: 0; }
+  100% { transform: scale(var(--rv-s, 1)); opacity: 1; }
+}
+.rv-kicker { font-size: 12px; letter-spacing: 4px; text-indent: 4px; color: var(--cream); }
+/* 拱形画框里的角色徽记，背后一圈细细的光芒 */
 .rv-art {
-  width: 120px; height: 150px; margin: 6px 0 4px; border-radius: 10px; display: grid; place-items: center; color: var(--gold-hi);
-  background: radial-gradient(circle at 50% 40%, rgba(255, 230, 170, .25), transparent 65%), var(--cut);
+  width: 116px; height: 144px; margin: 4px 0 2px; border-radius: 58px 58px 10px 10px;
+  display: grid; place-items: center; color: var(--gold-hi);
+  background:
+    radial-gradient(circle at 50% 44%, rgba(255, 230, 170, .3), transparent 60%),
+    repeating-conic-gradient(from 0deg at 50% 44%, rgba(255, 230, 170, .08) 0 7deg, transparent 7deg 14deg),
+    var(--cut);
   box-shadow: 0 0 0 1px var(--gold), inset 0 0 0 3px rgba(0, 0, 0, .35), inset 0 0 0 4px rgba(201, 162, 74, .55);
 }
-.rv-art .emblem { width: 78px; height: 78px; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .5)); }
-.rv-role { font: 800 32px/1.25 var(--serif); letter-spacing: 8px; text-indent: 8px; color: var(--gold-hi); text-shadow: 0 2px 4px rgba(0, 0, 0, .6); }
-.rv-team { font-size: 13.5px; font-weight: 700; color: var(--cream); }
-.rv-know { font-size: 13px; color: var(--cream-2); line-height: 1.5; }
-.rv-hint { font-size: 12.5px; color: var(--cream-3); letter-spacing: 2px; }
-.reveal.in-panel {
-  position: absolute; z-index: 6; border-radius: inherit; gap: 10px;
-  background: radial-gradient(circle at 50% 45%, rgba(36, 23, 14, .55), rgba(20, 12, 6, .85));
+.rv-art .emblem { width: 74px; height: 74px; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .5)); }
+.rv-role { font: 800 32px/1.2 var(--serif); letter-spacing: 8px; text-indent: 8px; color: var(--gold-hi); text-shadow: 0 2px 4px rgba(0, 0, 0, .6); }
+/* 阵营：羊皮纸缎带，蓝 / 红字 */
+.rv-team {
+  font-size: 12.5px; font-weight: 700; line-height: 21px; padding: 0 14px; letter-spacing: 2px;
+  background: linear-gradient(180deg, #f8ebc6, #dcc185); color: var(--royal-ink);
+  clip-path: polygon(0 0, 100% 0, calc(100% - 6px) 50%, 100% 100%, 0 100%, 6px 50%);
 }
-.reveal.in-panel .rv-hint { color: var(--cream-2); }
-@media (max-height: 760px) {
-  .reveal.in-panel .rv-card { min-height: 0; padding: 16px 18px; gap: 4px; }
-  .reveal.in-panel .rv-art { width: 96px; height: 116px; }
-  .reveal.in-panel .rv-art .emblem { width: 60px; height: 60px; }
-  .reveal.in-panel .rv-role { font-size: 28px; }
+.reveal.evil .rv-team { color: var(--crimson-ink); }
+.rv-know {
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 5px;
+  width: 100%; margin-top: 6px; padding-top: 9px; border-top: 1px solid rgba(201, 162, 74, .35); font-size: 12.5px;
+}
+.rv-know-k { flex: 1 0 100%; font-size: 12px; font-weight: 700; letter-spacing: 3px; color: var(--gold-hi); }
+.rv-none { color: var(--cream); opacity: .9; }
+/* 你知道的人：一枚枚小牌，整枚不断行（“4号 · 坏人”不会被拆开） */
+.kchip { white-space: nowrap; }
+.rv-know .kchip { padding: 2px 8px 2px 4px; gap: 4px; }
+.rv-know .kchip .emb { margin: 0; }
+
+/* =====================================================================
+   胜负标题：一面垂下的纹章旗（赢了飘金箔），约 2 秒后展开结算卷轴
+   ===================================================================== */
+.mo-finale {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; align-content: center; gap: 16px;
+  padding: 16px; overflow: hidden; cursor: pointer;
+}
+.mo-finale.out { animation: fade-out .25s ease-in forwards; pointer-events: none; }
+.fn-scrim {
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 42%, rgba(34, 20, 9, .62), rgba(6, 4, 2, .9) 72%);
+  animation: fade-in .3s ease-out both;
+}
+.fn-leaves { position: absolute; inset: 0; pointer-events: none; }
+.fn-leaves i {
+  position: absolute; top: -24px; left: var(--x); width: calc(9px * var(--s)); height: calc(13px * var(--s));
+  border-radius: 2px 7px 2px 7px;
+  background: linear-gradient(135deg, #fff5cf, #e8c96f 38%, #a87c28 72%, #f1d68a);
+  box-shadow: 0 0 5px rgba(255, 220, 140, .55);
+  animation: leaf-fall var(--t) cubic-bezier(.3, .2, .6, 1) var(--d) both;
+}
+@keyframes leaf-fall {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg) rotateX(0deg); opacity: 0; }
+  8% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translate3d(var(--dx), 104vh, 0) rotate(var(--r)) rotateX(540deg); opacity: 0; }
+}
+.fn-hang {
+  position: relative; width: min(400px, 100%);
+  filter: drop-shadow(0 24px 40px rgba(0, 0, 0, .7));
+  transform-origin: 50% 0; animation: fn-unfurl .6s cubic-bezier(.2, 1.2, .4, 1) .05s both;
+}
+/* 金色旗杆 + 两端圆头 */
+.fn-rod {
+  position: relative; z-index: 1; display: block; height: 12px; margin: 0 -14px; border-radius: 6px;
+  background: linear-gradient(180deg, #f6e2a2, #c9a24a 45%, #7a5a14);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .6);
+}
+.fn-rod::before, .fn-rod::after {
+  content: ""; position: absolute; top: 50%; width: 20px; height: 20px; margin-top: -10px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff1c2, #c9a24a 60%, #6b4e0e); box-shadow: 0 0 0 1.5px #4a3010;
+}
+.fn-rod::before { left: -10px; }
+.fn-rod::after { right: -10px; }
+/* 燕尾旗：外层金边、内层阵营色，两层同样的燕尾 */
+.fn-banner {
+  margin: -4px 8px 0; padding: 5px;
+  background: linear-gradient(180deg, #f1d68a, #b8902f 50%, #e3c374);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 40px), 0 100%);
+}
+.fn-field {
+  --fa: #3c6fb8; --fb: #1f4e8c; --fc: #10305c;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 24px 22px 66px; text-align: center; color: #fff;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, .035) 0 2px, transparent 2px 9px),
+    radial-gradient(130% 90% at 50% 0%, var(--fa), var(--fb) 55%, var(--fc));
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .25), inset 0 0 0 3px rgba(255, 230, 170, .35);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 37px), 0 100%);
+}
+.team-evil .fn-field { --fa: #b8404a; --fb: #9e1b2a; --fc: #5e0d17; }
+.fn-lose .fn-field { filter: saturate(.6) brightness(.82); }
+.fn-emblem {
+  width: 58px; height: 58px; margin-bottom: 4px; border-radius: 50%; display: grid; place-items: center; color: #2a1c10;
+  background: radial-gradient(circle at 35% 30%, #fff1c2, #d9b45a 70%);
+  box-shadow: 0 0 0 2px #4a3010, 0 0 0 5px rgba(236, 208, 138, .35), 0 6px 14px rgba(0, 0, 0, .45);
+}
+.fn-emblem .ic { width: 32px; height: 32px; }
+.fn-kick { font-size: 13px; font-weight: 700; letter-spacing: 4px; text-indent: 4px; }
+.fn-title {
+  font: 800 56px/1.15 var(--serif); letter-spacing: 16px; text-indent: 16px; color: var(--gold-hi);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .35), 0 4px 14px rgba(0, 0, 0, .5);
+  animation: fn-title .7s cubic-bezier(.2, 1.3, .4, 1) .3s both;
+}
+.fn-watch .fn-title { font-size: 42px; letter-spacing: 8px; text-indent: 8px; }
+.fn-role {
+  font-size: 13px; font-weight: 700; padding: 1px 12px; border-radius: 999px; color: var(--gold-hi);
+  background: rgba(0, 0, 0, .32); box-shadow: inset 0 0 0 1px rgba(236, 208, 138, .5);
+}
+.fn-sub { margin: 8px 0 0; font-size: 13.5px; line-height: 1.6; max-width: 30em; }
+.fn-hint { position: relative; font-size: 12.5px; letter-spacing: 2px; color: var(--cream-2); animation: fade-in .4s ease-out .9s both; }
+@keyframes fn-unfurl { 0% { transform: scaleY(.05); opacity: 0; } 60% { transform: scaleY(1.03); opacity: 1; } 100% { transform: none; } }
+@keyframes fn-title { 0% { transform: scale(1.5); opacity: 0; } 100% { transform: none; opacity: 1; } }
+
+/* 时刻和揭晓：手机收紧、大屏放大 */
+@media (max-width: 560px) {
+  .plq { min-width: 184px; max-width: min(300px, calc(100vw - 64px)); padding: 22px 16px 10px; }
+  .plq-seal { width: 38px; height: 38px; top: -19px; }
+  .plq-seal .ic { width: 20px; height: 20px; }
+  .plq-title { font-size: 22px; letter-spacing: 4px; text-indent: 4px; }
+  .plq-sub { font-size: 12.5px; }
+  .qc-row { gap: 6px; }
+  .qcard { --cw: 44px; }
+  .qc-front { font-size: 11px; letter-spacing: 1px; text-indent: 1px; }
+  .rv-card { width: 244px; }
+  .fn-field { padding: 20px 16px 58px; }
+  .fn-title { font-size: 46px; letter-spacing: 12px; text-indent: 12px; }
+  .fn-watch .fn-title { font-size: 34px; letter-spacing: 6px; text-indent: 6px; }
+  .fn-sub { font-size: 13px; }
+}
+@media (min-width: 1700px) and (min-height: 980px) {
+  .plq { min-width: 240px; max-width: 360px; padding: 28px 30px 14px; }
+  .plq-kick { font-size: 13px; }
+  .plq-title { font-size: 30px; }
+  .plq-sub { font-size: 14.5px; }
+  .qc-kick { font-size: 13px; }
+  .qcard { --cw: 66px; }
+  .qc-front { font-size: 14px; }
+  .rv-card { width: 284px; }
+  .rv-art { width: 128px; height: 158px; }
+  .rv-role { font-size: 36px; }
+  .rv-know { font-size: 13.5px; }
+  .fn-hang { width: min(460px, 100%); }
+  .fn-title { font-size: 64px; }
+  .fn-sub { font-size: 15px; }
+}
+@media (min-width: 2200px) and (min-height: 1250px) {
+  .plq { min-width: 300px; max-width: 440px; padding: 36px 36px 18px; border-radius: 16px; }
+  .plq-seal { width: 56px; height: 56px; top: -28px; }
+  .plq-seal .ic { width: 30px; height: 30px; }
+  .plq-kick { font-size: 15.5px; }
+  .plq-title { font-size: 38px; }
+  .plq-sub { font-size: 18px; }
+  .plq-note { font-size: 15px; }
+  .qc-kick { font-size: 16px; padding: 4px 18px; }
+  .qc-row { gap: 12px; }
+  .qcard { --cw: 86px; }
+  .qc-front { font-size: 17px; }
+  .rv-card { width: 340px; padding: 24px 22px 20px; gap: 8px; }
+  .rv-kicker { font-size: 14.5px; }
+  .rv-art { width: 152px; height: 188px; border-radius: 76px 76px 12px 12px; }
+  .rv-art .emblem { width: 96px; height: 96px; }
+  .rv-role { font-size: 42px; }
+  .rv-team { font-size: 15px; line-height: 26px; }
+  .rv-know { font-size: 15.5px; }
+  .rv-know-k { font-size: 14.5px; }
+  .fn-hang { width: min(560px, 100%); }
+  .fn-emblem { width: 72px; height: 72px; }
+  .fn-emblem .ic { width: 40px; height: 40px; }
+  .fn-kick { font-size: 16px; }
+  .fn-title { font-size: 78px; }
+  .fn-role { font-size: 16px; }
+  .fn-sub { font-size: 18px; }
+  .fn-hint { font-size: 15px; }
 }
 
 /* =====================================================================
@@ -1685,8 +1997,6 @@ dialog::backdrop { background: radial-gradient(circle at 50% 40%, rgba(20, 12, 6
      （只加在内容上，不加在行动栏自己身上，否则点行动栏会把页面滚到底） */
   .avatar, .mark, .identity, .identity .peek, .right, .log-head label { scroll-margin-bottom: calc(var(--dock-h, 0px) + 10px); }
   .w-tip { max-width: 100%; }
-  /* 揭晓卡片压在行动栏下面：轮到你时行动栏不被遮暗 */
-  .reveal:not(.in-panel) { z-index: 7; }
   /* 顶栏两行：品牌 + 按钮 / 任务火漆 + 否决宝石 */
   .topbar { flex-wrap: wrap; gap: 6px 10px; padding: 8px 12px 12px; }
   .tracks { order: 3; flex: 1 1 100%; width: 100%; justify-content: space-between; gap: 10px; padding: 2px 4px 0; }
@@ -1864,9 +2174,6 @@ dialog::backdrop { background: radial-gradient(circle at 50% 40%, rgba(20, 12, 6
   .tk { font-size: 11px; letter-spacing: 0; text-align: center; }
   .tv { font-size: 20px; }
   .end-actions button { flex: 1 1 auto; }
-  .rv-card { width: min(250px, calc(100vw - 48px)); }
-  /* 手机：揭晓卡片放在上半屏，压在行动栏下面，轮到你时仍能直接操作 */
-  .reveal:not(.in-panel) { z-index: 7; align-content: start; padding-top: max(64px, 9vh); }
 }
 
 /* 小屏手机：火漆和宝石再收紧一点，一行放得下 */
@@ -1903,9 +2210,14 @@ dialog::backdrop { background: radial-gradient(circle at 50% 40%, rgba(20, 12, 6
     transition-duration: .001ms !important;
     scroll-behavior: auto !important;
   }
-  .stamp { animation: none !important; }
   .dots::after { content: "…"; animation: none !important; }
   .avatar .think i, .w-ink i { opacity: 1; animation: none !important; }
   .panel.enter, .panel.enter::after, .panel.enter .turn-tag, .w-tip-t.in, .pick .slot.new .emb { animation: none !important; }
   .panel.enter::after { display: none; }
+  /* 时刻：直接摆出最终状态（牌已翻开、印章已落下），不飘金箔 */
+  .plq, .qcard, .qc-in, .qc-kick, .mo-ring, .mo-dagger, .mo-wrap.out, .is-hit .mo-ring.aim::before,
+  .rv-scrim, .rv-card, .mo-finale.out, .fn-scrim, .fn-hang, .fn-title, .fn-hint { animation: none !important; }
+  .mo, .mo-wrap.out .mo { transition: none !important; }
+  .is-miss .mo-dagger { opacity: 0; }
+  .fn-leaves { display: none; }
 }
