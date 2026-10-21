@@ -2,17 +2,43 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1c130c">
   <title>阿瓦隆练习场</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗡️</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 74'%3E%3Cpath d='M6 5Q32 0 58 5V33C58 52 46 64 32 70C18 64 6 52 6 33Z' fill='%239e1b2a' stroke='%23d9b45a' stroke-width='5'/%3E%3Cpath d='M32 14v40M20 28h24' stroke='%23f1e4c4' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <!-- 共享的 SVG 定义：盾形裁切、金箔描边、高光（不能用 display:none，否则渐变失效） -->
+  <svg class="svg-defs" width="0" height="0" aria-hidden="true" focusable="false">
+    <defs>
+      <clipPath id="clip-shield" clipPathUnits="userSpaceOnUse">
+        <path d="M6 5Q32 0 58 5V33C58 52 46 64 32 70C18 64 6 52 6 33Z"/>
+      </clipPath>
+      <linearGradient id="g-gold" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#f6e2a2"/>
+        <stop offset=".45" stop-color="#c9a24a"/>
+        <stop offset=".7" stop-color="#8a6a24"/>
+        <stop offset="1" stop-color="#e3c374"/>
+      </linearGradient>
+      <linearGradient id="g-shine" x1="0" y1="0" x2=".6" y2="1">
+        <stop offset="0" stop-color="#fff" stop-opacity=".38"/>
+        <stop offset=".42" stop-color="#fff" stop-opacity="0"/>
+        <stop offset=".75" stop-color="#000" stop-opacity="0"/>
+        <stop offset="1" stop-color="#000" stop-opacity=".32"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
   <!-- ============ 开局设置 ============ -->
   <section id="setup" class="screen">
-    <div class="setup-card">
-      <h1>阿瓦隆 <span class="sub">单人练习场</span></h1>
-      <p class="tagline">你 + 一桌由 DeepSeek 扮演的 AI 玩家。玩得开心，顺便练练读人。</p>
+    <div class="setup-card paper">
+      <header class="setup-head">
+        <div class="crest" data-art="crest" aria-hidden="true"></div>
+        <h1>阿瓦隆 <span class="sub">单人练习场</span></h1>
+        <div class="flourish" aria-hidden="true"></div>
+        <p class="tagline">你 + 一桌由 DeepSeek 扮演的 AI 玩家。玩得开心，顺便练练读人。</p>
+      </header>
 
       <form id="setup-form" autocomplete="off">
         <div class="grid">
@@ -42,8 +68,9 @@
               <option value="130">详细</option>
             </select>
           </label>
-          <label class="check">
-            <input type="checkbox" name="lady" id="f-lady"> 湖中仙女 <small>（推荐 7 人以上）</small>
+          <label class="check toggle">
+            <input type="checkbox" name="lady" id="f-lady">
+            <span class="toggle-text">湖中仙女 <small>（推荐 7 人以上）</small></span>
           </label>
         </div>
         <div class="roles-preview" id="roles-preview"></div>
@@ -51,8 +78,8 @@
         <fieldset class="ai-box">
           <legend>AI 玩家</legend>
           <div class="mode-row">
-            <label class="radio"><input type="radio" name="mode" value="llm" checked> DeepSeek（推荐）</label>
-            <label class="radio"><input type="radio" name="mode" value="offline"> 离线规则 AI（免费，较笨）</label>
+            <label class="radio"><input type="radio" name="mode" value="llm" checked> <span>DeepSeek<small>推荐</small></span></label>
+            <label class="radio"><input type="radio" name="mode" value="offline"> <span>离线规则 AI<small>免费，较笨</small></span></label>
           </div>
           <div id="llm-fields">
             <p class="muted" id="server-key-note" hidden>服务器已从 .env 读取了 API Key，这里可以留空。</p>
@@ -65,12 +92,12 @@
             <label>模型
               <input name="model" id="f-model" placeholder="deepseek-chat">
             </label>
-            <p class="muted small" id="check-result"></p>
+            <p class="muted small" id="check-result" aria-live="polite"></p>
             <p class="muted small">Key 只保存在你的浏览器和本机服务里，直接发送给 DeepSeek。</p>
           </div>
         </fieldset>
 
-        <p class="error" id="setup-error"></p>
+        <p class="error" id="setup-error" role="alert"></p>
         <button type="submit" class="primary big" id="btn-start">开始游戏</button>
       </form>
     </div>
@@ -79,11 +106,14 @@
   <!-- ============ 对局 ============ -->
   <section id="game" class="screen hidden">
     <header class="topbar">
-      <div class="brand">阿瓦隆</div>
+      <div class="brand"><span class="brand-crest" data-art="crest" aria-hidden="true"></span><span>阿瓦隆</span></div>
       <div class="tracks">
-        <div id="quest-track" class="quest-track"></div>
+        <div class="track-group">
+          <span class="track-label">任务</span>
+          <div id="quest-track" class="quest-track"></div>
+        </div>
         <div class="reject-wrap" title="本轮连续否决次数，到 5 次坏人直接获胜">
-          <span class="muted small">否决</span>
+          <span class="track-label">否决</span>
           <div id="reject-track" class="reject-track"></div>
         </div>
       </div>
@@ -100,12 +130,13 @@
           <div id="table" class="table">
             <div class="table-center" id="table-center"></div>
           </div>
+          <div id="moment" class="moment" aria-live="polite"></div>
         </div>
         <div id="identity" class="identity"></div>
       </div>
-      <div class="right">
+      <div class="right paper">
         <div class="log-head">
-          <span>对局记录</span>
+          <span class="log-title">对局记录</span>
           <label class="check small" id="thoughts-toggle" hidden>
             <input type="checkbox" id="show-thoughts"> 显示 AI 内心独白
           </label>
@@ -116,11 +147,11 @@
 
     <footer class="action-bar">
       <div id="action" class="action"></div>
-      <button id="btn-hint" class="hint-btn" title="让教练根据你能看到的信息给出建议">💡 教练</button>
+      <button id="btn-hint" class="hint-btn" title="让教练根据你能看到的信息给出建议"><span data-art="candle" aria-hidden="true"></span><span class="hint-label">教练</span></button>
     </footer>
   </section>
 
-  <dialog id="modal">
+  <dialog id="modal" class="paper">
     <div class="modal-head">
       <h2 id="modal-title"></h2>
       <button class="ghost" id="modal-close" aria-label="关闭">✕</button>
@@ -128,6 +159,7 @@
     <div id="modal-body" class="modal-body"></div>
   </dialog>
 
+  <script src="/static/art.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
