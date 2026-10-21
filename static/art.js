@@ -156,6 +156,8 @@ const ART = (() => {
     scroll: '<path d="M6 3.5h11.5a2.5 2.5 0 0 1 0 5H16v10a2.5 2.5 0 0 1-2.5 2.5H5a2.5 2.5 0 0 1 0-5h1.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 8.5h4M9 12h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
     // 锁：好人不能出的失败牌
     lock: '<path d="M7.5 10.5V8a4.5 4.5 0 0 1 9 0v2.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><rect x="4.5" y="10.5" width="15" height="11" rx="2" fill="currentColor"/><circle cx="12" cy="15.4" r="1.6" fill="rgba(0,0,0,.45)"/><rect x="11.2" y="16" width="1.6" height="3" rx=".8" fill="rgba(0,0,0,.45)"/>',
+    // 向下的箭头：对局记录里“有新记录”
+    down: '<path d="M5.5 9.5l6.5 6.5 6.5-6.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>',
     // 号角：公布查验结果
     horn: '<path d="M3 10.2h3.4L17.6 4.5v15L6.4 13.8H3z" fill="currentColor"/><path d="M6.6 14.2l1.6 5.3h2.8l-1.3-4.4" fill="currentColor"/><path d="M20.2 9.2a3.6 3.6 0 0 1 0 5.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
   };

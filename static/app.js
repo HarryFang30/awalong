@@ -204,7 +204,7 @@ function refreshSetup() {
     .map(([r, c]) => `<span class="tag ${roles[r].team}" title="${esc(roles[r].ability)}">${ART.role(r, "emblem")}${esc(roles[r].name)}${c > 1 ? `<b>×${c}</b>` : ""}</span>`)
     .join("");
   const sizes = preset.team_sizes
-    .map((z, i) => `<span class="qs${n >= 7 && i === 3 ? " two" : ""}" title="第${i + 1}轮：${z}人${n >= 7 && i === 3 ? "，需2张失败" : ""}">${z}</span>`)
+    .map((z, i) => `<span class="qs" title="第${i + 1}轮：${z}人${n >= 7 && i === 3 ? "，需2张失败" : ""}">${z}${n >= 7 && i === 3 ? '<span class="two" aria-hidden="true">需2败</span>' : ""}</span>`)
     .join("");
   $("#roles-preview").innerHTML =
     `<div class="rp-row"><span class="rp-k">本局角色</span><span class="rp-v">${tags}</span></div>` +
@@ -365,6 +365,7 @@ function enterGame(id, fresh = false) {
   LOGGEN++; // 上一局还没补完的记录不再往这里补
   $("#log").innerHTML = "";
   LOG.pinned = true;
+  newRowsPill(false);
   $("#table").querySelectorAll(".seat").forEach((el) => el.remove());
   for (const sel of ["#action", "#quest-track", "#reject-track", "#table-center", "#identity"]) {
     const el = $(sel);
@@ -381,23 +382,54 @@ function enterGame(id, fresh = false) {
   poll();
 }
 
+// 轮询只有一条链：同一时刻最多一个 /state 请求在路上。
+// 拉取途中又要求拉一次（刚提交了行动、换了一局）就记下来，这一次回来后马上接着拉——
+// 两个请求带着同一个 since 并行回来，会把同一批事件处理两遍（重复的记录、重复的刺杀和胜负）
 async function poll() {
   clearTimeout(S.pollTimer);
+  if (S.polling) { S.pollAgain = true; return; }
   const id = S.gameId;
   if (!id) return;
+  S.polling = true;
+  S.pollAgain = false;
+  let next = null;
   try {
-    const prevLast = S.lastId;
+    next = await pollOnce(id);
+  } finally {
+    S.polling = false;
+  }
+  if (S.gameId !== id || S.pollAgain) {
+    S.pollAgain = false;
+    if (S.gameId) { clearTimeout(S.pollTimer); S.pollTimer = setTimeout(poll, S.gameId !== id ? 0 : 60); }
+    return;
+  }
+  if (next !== null) S.pollTimer = setTimeout(poll, next);
+}
+// 尽快再拉一次（提交行动之后）：不另起一条并行的轮询
+function pollSoon(ms) {
+  if (S.polling) { S.pollAgain = true; return; }
+  clearTimeout(S.pollTimer);
+  S.pollTimer = setTimeout(poll, ms);
+}
+
+// 拉一次状态并处理新事件；返回下一次轮询的间隔（毫秒），不用再拉时返回 null
+async function pollOnce(id) {
+  try {
     let rebuild = !S.live;
     let endedNow = false;
+    let refetched = false;
     let st = await api(`/api/games/${id}/state?since=${S.lastId}`);
-    if (id !== S.gameId) return;
+    if (id !== S.gameId) return null;
+    // “新”以处理这一刻的 lastId 为准（不是发请求时的）
+    const prevLast = S.lastId;
     if (st.status === "ended" && !S.ended) {
       // 对局结束：重新拉取全部记录（含隐藏信息和 AI 内心独白）
       st = await api(`/api/games/${id}/state?since=0`);
-      if (id !== S.gameId) return;
+      if (id !== S.gameId) return null;
       S.ended = true;
       S.events = [];
       rebuild = true;
+      refetched = true;
       endedNow = S.live;
       if (!endedNow) $("#thoughts-toggle").hidden = false;
     }
@@ -411,6 +443,8 @@ async function poll() {
     const fresh = [];
     const items = [];
     for (const ev of st.events) {
+      // 已经处理过的事件不再处理第二遍（终局重新拉全部记录时除外：那时 S.events 是重建的）
+      if (!refetched && ev.id <= prevLast) continue;
       S.events.push(ev);
       const isNew = S.live && ev.id > prevLast;
       if (isNew) { prepMoment(ev); fresh.push(ev); }
@@ -420,7 +454,7 @@ async function poll() {
     // 刚刚打完：先只写新到的几条（照常扣住要揭晓的），整段带内心独白的重建等刺杀、胜负演完再分批做
     if (endedNow) appendEvents(items.filter(([, isNew]) => isNew));
     else appendEvents(items, rebuild);
-    S.lastId = st.last_event_id;
+    S.lastId = Math.max(S.lastId, st.last_event_id);
     render();
     S.live = true;
     // 时刻在渲染之后再演：要用到座位的位置，桌面状态也已经是最新的
@@ -437,14 +471,15 @@ async function poll() {
       // 结算卷轴等所有时刻（刺杀、胜负标题）演完再展开；刷新恢复时直接打开
       whenFxIdle(() => fxLater(showEndModal, fresh.length ? 250 : 700));
     }
-    if (!ACTIVE.includes(st.status)) return;
-    S.pollTimer = setTimeout(poll, st.pending ? 1500 : 700);
+    if (!ACTIVE.includes(st.status)) return null;
+    return st.pending ? 1500 : 700;
   } catch (err) {
+    if (id !== S.gameId) return null;
     if (err.message.includes("不存在")) {
       showSetup("上一局已经不在了（服务器可能重启过），开一局新的吧。");
-      return;
+      return null;
     }
-    S.pollTimer = setTimeout(poll, 3000);
+    return 3000;
   }
 }
 
@@ -605,6 +640,7 @@ function ringLayout() {
 
   RING.pos = {};
   RING.side = {};
+  RING.z = {};
   const px = {};
   lay.pts.forEach((p, k) => {
     const seat = ((base - 1 + k) % n) + 1;
@@ -615,6 +651,8 @@ function ringLayout() {
     RING.side[seat] = sideMode && Math.abs(p.c) > 0.55 ? (p.c < 0 ? "side-l" : "side-r") : "";
     px[seat] = [W / 2 + p.x, cy + p.y];
   });
+  // 越靠下的座位叠得越靠上：上面座位“标记”按钮往下放大的点击区域，永远压不住下面那面盾牌（挤的桌子上不会点错人）
+  Object.keys(px).sort((a, b) => px[a][1] - px[b][1]).forEach((seat, i) => { RING.z[seat] = String(2 + i); });
   // 同一局里只是圆桌变了高度（比如轮到你时行动栏升高）：座位从原来的位置滑过去，而不是一下跳开。
   // 宽度变了（旋转屏幕、拖窗口）就直接就位：横竖屏切换时座位从屏幕外滑回来会撑出横向滚动
   const nb = `${n}|${base}`;
@@ -745,6 +783,8 @@ function fitCenter() {
 function placeSeat(el, seat) {
   const pos = RING.pos[seat];
   if (!pos) return;
+  const z = RING.z?.[seat];
+  if (z && el._z !== z) { el._z = z; el.style.zIndex = z; }
   // 浏览器会把 "12.300%" 规范成 "12.3%"，所以记住上次写入的值来比较，避免每次轮询都改样式
   const k = pos.left + "," + pos.top;
   if (el._pos === k) return;
@@ -867,7 +907,8 @@ function renderTable() {
     setAttr(avatarEl, "aria-pressed", selectable ? String(S.selected.includes(p.seat)) : null);
     setAttr(avatarEl, "aria-label", `${p.seat}号 ${p.name}${p.is_human ? "（你）" : ""}`);
 
-    patch(nameEl, `${esc(p.name)}${p.is_human ? "<small>（你）</small>" : ""}`);
+    // 你的名字太长时只省略名字本身，“（你）”始终留着
+    patch(nameEl, p.is_human ? `<span class="nm">${esc(p.name)}</span><small>（你）</small>` : esc(p.name));
 
     const labels = [];
     if (p.role_name && open && (S.ended || !p.is_human)) {
@@ -1109,10 +1150,20 @@ function prepMoment(ev) {
     fx.holdReveal = ev.id;
     if (fx.holdQuest >= 0 && !fx.holdEnd) fx.holdEnd = END_WAIT.quest_result;
   } else if (ev.type === "game_end") {
-    const before = S.events[S.events.length - 2];
-    fx.holdEnd = END_WAIT[before?.type] || "对局结束，正在揭晓……";
+    // 前面的翻牌 / “刺杀阶段”还没演到：行动栏保持原来那句，等那几幕开演时再换（setHold）
+    if (fx.holdQuest >= 0 || fx.holdReveal) fx.holdEnd ||= END_WAIT.quest_result;
+    else {
+      const before = S.events[S.events.length - 2];
+      fx.holdEnd = END_WAIT[before?.type] || "对局结束，正在揭晓……";
+    }
     if (!S.g.spectator) fx.holdRoles = true;
   }
+}
+// 行动栏还压着时，换成这一幕对应的那句话（不提前说出后面才揭晓的事）
+function setHold(text) {
+  if (!S.fx.holdEnd || S.fx.holdEnd === text) return;
+  S.fx.holdEnd = text;
+  if (S.g) renderAction();
 }
 function releaseQuest() {
   if (S.fx.holdQuest < 0) return;
@@ -1224,9 +1275,10 @@ const MOMENTS = {
     const release = () => {
       if (S.fx.holdQuest === ev.quest) releaseQuest();
       releaseLog(ev.id);
-      // 最后一次翻牌落定：结果已经摆在桌上，行动栏可以呈上下一步了（比如轮到你刺杀）。
+      // 最后一次翻牌落定：结果已经摆在桌上，行动栏可以呈上下一步了（比如轮到你出牌）。
+      // 后面还排着“刺杀阶段”这一幕时，行动栏等那一幕开演再放（轮到你刺杀的卡片不抢在宣布之前出现）；
       // 对局已经结束时行动栏归胜负标题管
-      if (S.fx.holdEnd && S.g?.status !== "ended") releaseEnd();
+      if (S.fx.holdEnd && !S.fx.holdReveal && S.g?.status !== "ended") releaseEnd();
     };
     return {
       kind: "quest", min: land + 350, hurry: land + 700, ms: land + 1500, land, release,
@@ -1240,7 +1292,7 @@ const MOMENTS = {
   lady_claim(ev) {
     const mine = player(ev.holder)?.is_human;
     const truth = S.events.find((e) => e.type === "lady_result" && e.holder === ev.holder && e.target === ev.target)?.result;
-    let sub = ev.claim ? "宣布可能是假的，想想TA自己是哪边的" : `查验了${ev.target}号，但没有公开`;
+    let sub = ev.claim ? `<span class="nw">宣布可能是假的，</span><span class="nw">想想TA自己是哪边的</span>` : `查验了${ev.target}号，但没有公开`;
     if (mine) sub = "真相只有你知道";
     else if (S.g.spectator && truth) {
       sub = `真实结果：${TEAM_NAME[truth]}` + (!ev.claim ? "" : truth === ev.claim ? " · 说了实话" : " · 撒了谎！");
@@ -1261,9 +1313,10 @@ const MOMENTS = {
       releaseReveal();
       releaseLog(ev.id);
       if (S.g?.status !== "ended") releaseEnd();
+      else setHold("坏人正在讨论谁是梅林……");
     };
     return {
-      kind: "evil", min: 300, hurry: 1300, ms: 2600, release,
+      kind: "evil", min: 900, hurry: 1300, ms: 2600, release,
       html: `<div class="mo">${plaque("evil", "dagger", "好人完成了3次任务", "刺杀阶段",
         `坏人亮明身份 · ${mine ? "你是刺客：找出梅林" : `刺客${ev.assassin}号寻找梅林`}`)}</div>`,
       start: (c) => {
@@ -1288,6 +1341,7 @@ const MOMENTS = {
       kind: "assassin", min: 2000, hurry: 2000, ms: 2900, land: 620, release,
       html: `<div class="mo">${plaque(hit ? "evil" : "good", hit ? "dagger" : "chalice", kick, hit ? "刺中梅林！" : "刺杀落空", sub, "", 700)}</div>`,
       start(c) {
+        setHold(END_WAIT.assassination);
         spot([ev.target]);
         ring(c.el, ev.target, "aim");
         const pt = seatPoint(ev.target);
@@ -1354,7 +1408,10 @@ function finaleMoment(ev) {
 // ---------- 队列 ----------
 // 同一批事件里，后来的通常顶替前面的（任务结果顶替它的投票）；
 // 但任务翻牌后面紧跟的湖中仙女宣布 / 刺杀阶段 / 刺杀是“下一幕”：先翻完牌，再接着演
-const FOLLOWS = { quest_result: ["lady_claim", "evil_reveal", "assassination"] };
+// “最后一次翻牌 → 刺杀阶段 → 刺杀”是一条链：不管这几条是一次还是分几次拉到的，都按顺序一幕一幕演
+const FOLLOWS = { quest_result: ["lady_claim", "evil_reveal", "assassination"], evil_reveal: ["assassination"] };
+const follows = (a, b) => !!a && (FOLLOWS[a] || []).includes(b);
+const momentOf = (ev) => ({ type: ev.type, ...MOMENTS[ev.type](ev) });
 function playMoments(evs) {
   const seq = [];
   let end = null;
@@ -1362,25 +1419,33 @@ function playMoments(evs) {
     if (ev.type === "game_end") end = ev;
     else if (ev.type === "lady_check") ripple(ev.target, "lady");
     else if (MOMENTS[ev.type]) {
-      while (seq.length && !(FOLLOWS[seq[seq.length - 1].type] || []).includes(ev.type)) {
+      while (seq.length && !follows(seq[seq.length - 1].type, ev.type)) {
         const old = seq.pop();
         MOMENTS[old.type](old).release?.(); // 同一批里被顶替的：只放出它压住的东西
       }
       seq.push(ev);
     }
   }
-  queueMoments(seq.map((ev) => MOMENTS[ev.type](ev)), end ? finaleMoment(end) : null);
+  queueMoments(seq.map(momentOf), end ? finaleMoment(end) : null);
 }
 function queueMoments(list, finale) {
   const fx = S.fx;
   if (!list.length && !finale) return;
+  let chained = false;
   if (list.length) {
-    fx.queue.forEach((m) => m.release?.()); // 还没轮到就被更新的事件顶替了
-    fx.queue = list;
+    // 接在排队的最后一幕（没有排队的就是正在演的那一幕）后面的“下一幕”：排到队尾，前面的照常演完
+    const tail = fx.queue.length ? fx.queue[fx.queue.length - 1] : fx.cur?.m;
+    if (follows(tail?.type, list[0].type)) {
+      fx.queue.push(...list);
+      chained = true;
+    } else {
+      fx.queue.forEach((m) => m.release?.()); // 还没轮到就被更新的事件顶替了
+      fx.queue = list;
+    }
   }
   if (finale) fx.finale = finale;
-  // 新的事件到了：正在演的演到 min 就让位；只有终局标题排在后面时，正在演的“原因”先演完 hurry 那么久
-  if (fx.cur) cutMoment(fx.cur, !list.length);
+  // 新的事件到了：正在演的演到 min 就让位；后面排的是“下一幕”或终局标题时，正在演的先演完 hurry 那么久
+  if (fx.cur) cutMoment(fx.cur, chained || !list.length);
   else nextMoment();
 }
 function nextMoment() {
@@ -1409,8 +1474,8 @@ function startMoment(m) {
     if (reduceMotion()) landMoment(c);
     else c.landTimer = fxLater(() => landMoment(c), m.land);
   }
-  // 轮到你行动时：只演关键部分；后面还排着下一幕时稍微收短一点
-  const ms = S.g?.pending && !m.body ? m.hurry : fx.queue.length ? Math.max(m.hurry, m.ms - 500) : m.ms;
+  // 轮到你行动时：只演关键部分；后面还排着下一幕时收短一点（刺杀阶段 → 刺杀 → 胜负连着演，不拖沓）
+  const ms = S.g?.pending && !m.body ? m.hurry : fx.queue.length ? Math.max(m.hurry, m.ms - 800) : m.ms;
   c.endAt = c.at + ms;
   c.timer = fxLater(() => endMoment(c), ms);
 }
@@ -1421,8 +1486,11 @@ function fitMoment(el) {
   const wrap = $(".table-wrap");
   if (!mo || !wrap || !RING.geo) return;
   mo.classList.remove("row", "compact");
-  mo.style.removeProperty("--mo-s");
-  mo.style.removeProperty("--mo-y");
+  // 已经在传令的位置上：重摆时不再播一遍入场（settled 关掉入场动画）
+  const wasHerald = el.classList.contains("herald");
+  el.classList.remove("herald", "settled");
+  if (wasHerald) el.classList.add("settled");
+  for (const k of ["--mo-s", "--mo-y", "--mo-x"]) mo.style.removeProperty(k);
   if (!mo.offsetHeight) return;
   const wr = wrap.getBoundingClientRect();
   const left = $(".left");
@@ -1451,13 +1519,14 @@ function fitMoment(el) {
   const boxes = seatBoxes(false);
   const W = RING.geo.W;
   // 先在座位之间、看得见的那一条里找（缩到 0.62，伸出去的印记也不压座位）；
-  // 再放宽一点：印记可以搭在座位上、牌子缩到 0.55；实在放不下，退到“看得见就行”（短暂压住座位）。
-  // 印记始终要留在看得见的地方
+  // 再放宽一点：印记可以搭在座位上、牌子缩到 0.55；再退到“圆桌上看得见的地方就行”（短暂压住座位）。
+  // 印记始终要留在看得见的地方；圆桌露出来的部分放不下（手机上往下翻去看记录了），改成传令（heraldMoment）
   const band = (b) => [Math.max(b.top, vTop), Math.min(b.bot, vBot)];
+  const onTable = [Math.max(vTop, 4), Math.min(vBot, wr.height - 4)];
   const tries = [
     { min: 0.62, region: band },
     { min: 0.55, region: (b) => { const [t, z] = band(b); return [Math.max(t - 26, vTop), z]; } },
-    { min: 0.6, region: () => [vTop, vBot] },
+    { min: 0.6, region: () => onTable },
   ];
   let best = null;
   for (const t of tries) {
@@ -1477,14 +1546,48 @@ function fitMoment(el) {
     if (best) break;
   }
   if (!best) {
-    const sh = shapes[shapes.length - 1];
-    const b = bandFor((sh.w * 0.6) / 2, boxes);
-    const top = Math.max(b.top, vTop), bot = Math.min(b.bot, vBot);
-    best = { s: 0.6, cls: sh.cls, y: bot > top ? (top + bot) / 2 : RING.geo.cy };
+    heraldMoment(el, mo, variants, [vTop + wr.top - 6, vBot + wr.top + 6]);
+    return;
   }
   if (best.cls.length) mo.classList.add(...best.cls);
   if (best.s < 0.98) mo.style.setProperty("--mo-s", best.s.toFixed(3));
   mo.style.setProperty("--mo-y", `${best.y.toFixed(1)}px`);
+}
+// 传令：圆桌不在屏幕里（手机上往下翻着看记录），时刻不再硬塞进身份卡、记录上面——
+// 固定在看得见的那一段（吸底行动栏以上）偏上的位置，衬一块深色皮革底板，后面一层淡淡的暗幕。
+// 翻牌用紧凑的排法；滚动页面时它留在原处，演完照常收起
+function heraldMoment(el, mo, variants, [top, bot]) {
+  el.classList.add("herald");
+  const left = $(".left");
+  let x0 = 0, x1 = document.documentElement.clientWidth;
+  if (left && getComputedStyle(left).overflowY !== "visible") {
+    const lr = left.getBoundingClientRect();
+    x0 = Math.max(x0, lr.left);
+    x1 = Math.min(x1, lr.right);
+  }
+  const W = x1 - x0 - 24, H = bot - top - 20;
+  // 竖排优先（窄而完整，不会是一块空着半边的宽板子）；放不下再省掉小标题、最后才左右摆开
+  const order = variants.length > 1 ? [[], ["compact"], ["row"], ["compact", "row"]] : variants;
+  let best = null;
+  for (const cls of order) {
+    if (cls.length) mo.classList.add(...cls);
+    const s = Math.min(1, W / mo.offsetWidth, H / mo.offsetHeight);
+    const h = mo.offsetHeight * s;
+    if (cls.length) mo.classList.remove(...cls);
+    if (!best || s > best.s + 0.08) best = { s, cls, h };
+    if (s >= 0.92) break;
+  }
+  if (best.cls.length) mo.classList.add(...best.cls);
+  const s = Math.max(0.5, best.s);
+  if (s < 0.98) mo.style.setProperty("--mo-s", s.toFixed(3));
+  // 偏上一点（视线自然落在那里），但整块都在看得见的范围里
+  const y = Math.min(Math.max(top + (bot - top) * 0.4, top + best.h / 2 + 10), bot - best.h / 2 - 10);
+  mo.style.setProperty("--mo-y", `${Math.round(y)}px`);
+  mo.style.setProperty("--mo-x", `${Math.round((x0 + x1) / 2)}px`);
+  // 暗幕只盖住圆桌那一栏看得见的部分（不压暗行动栏和桌面版右侧的记录）
+  const vw = document.documentElement.clientWidth;
+  el.style.cssText = `--h-t:${Math.max(0, Math.round(top))}px;--h-b:${Math.max(0, Math.round(window.innerHeight - bot))}px;` +
+    `--h-l:${Math.round(x0)}px;--h-r:${Math.max(0, Math.round(vw - x1))}px`;
 }
 function refitMoment() {
   const c = S.fx?.cur;
@@ -1492,6 +1595,16 @@ function refitMoment() {
   if (gliding()) fitAfterGlide();
   else fitMoment(c.el);
 }
+// 时刻演着的时候翻动页面（或被“轮到你点人”滚回圆桌）：停下来后按新的可视范围重摆一次——
+// 圆桌回到屏幕里，传令就回到桌上；圆桌滚走了，桌上的时刻就改成传令
+let scrollFitTimer = 0;
+function refitOnScroll() {
+  if (!S.fx?.cur || S.fx.cur.m.body) return;
+  clearTimeout(scrollFitTimer);
+  scrollFitTimer = setTimeout(refitMoment, 120);
+}
+window.addEventListener("scroll", refitOnScroll, { passive: true });
+$(".left").addEventListener("scroll", refitOnScroll, { passive: true });
 function landMoment(c) {
   if (c.landed) return;
   c.landed = true;
@@ -1626,7 +1739,16 @@ document.addEventListener("click", (e) => {
   if (!S.fx) return;
   if (!e.target.closest?.(".reveal")) hideReveal();
   if (S.fx.cur && !S.fx.cur.m.body) skipMoment();
+  if (e.target.closest?.(".table-wrap, .action-bar")) rushHeld();
 }, true);
+// 轮到你行动、但行动栏还压着揭晓（最后一次翻牌、刺杀阶段，或两幕之间的空档）：
+// 点一下桌面就把压着的结果全部摆出来、呈上行动卡片——同一下点击接着就能选人（后面那几幕照常演）
+function rushHeld() {
+  if (!S.g?.pending || !dockHeld()) return;
+  const c = S.fx.cur;
+  if (c && !c.m.body) landMoment(c);
+  releaseAll();
+}
 document.addEventListener("keydown", (e) => {
   if (!S.fx || e.repeat) return;
   const c = S.fx.cur;
@@ -1639,8 +1761,9 @@ document.addEventListener("keydown", (e) => {
   if (document.querySelector(".reveal:not(.out)")) {
     const typing = e.target.closest?.("input, textarea, select, button");
     if (key === "Escape" || (!typing && (key === "Enter" || key === " "))) hideReveal();
-  } else if (key === "Escape" && c) {
-    skipMoment();
+  } else if (key === "Escape" && (c || dockHeld())) {
+    if (c) skipMoment();
+    rushHeld();
   }
 }, true);
 
@@ -1689,7 +1812,7 @@ function teamLine(seats, label, names = true) {
 const PANELS = {
   propose: (p) => {
     const q = S.g.quests[S.g.quest_index];
-    return `${head("crown", `你是队长：组建 <span class="em">${p.size}</span> 人队伍`,
+    return `${head("crown", `<span><span class="ah-long nw">你是队长：</span><span class="nw">组建 <span class="em">${p.size}</span> 人队伍</span></span>`,
       `在圆桌上点选 ${p.size} 人 · 可以选自己${q && q.fails_needed === 2 ? " · 本轮需2张失败" : ""}`, attemptWarn())}
     <div class="act-main">${speechBox("说说组队理由（可选）", "组队理由（可选）")}</div>
     <div class="act-side with-pick">${pick()}<button class="primary" id="act-submit" disabled>${ic("swords")}<span>确认发车</span></button></div>`;
@@ -1700,11 +1823,12 @@ const PANELS = {
       ${speechBox("你的发言，所有人都会听到", "说点什么…")}
     </div>
     <div class="act-side"><button class="ghost pass" id="act-pass">过</button><button class="primary" id="act-submit">${ic("quill")}<span>发言</span></button></div>`,
-  vote: (p) => `${head("ballot", "投票：这支队伍能出发吗？", `赞成票过半（至少 ${Math.floor(S.g.n / 2) + 1} 票）才发车`, attemptWarn())}
+  vote: (p) => `${head("ballot", `<span><span class="nw">投票：</span><span class="nw"><span class="ah-long">这支队伍</span>能出发吗？</span></span>`,
+    `<span><span class="ah-long nw">赞成票过半</span><span class="nw"><span class="ah-long">（</span>至少 ${Math.floor(S.g.n / 2) + 1} 票<span class="ah-long">）</span>才发车</span></span>`, attemptWarn())}
     <div class="act-main">${teamLine(p.team, `<span class="tl-long">队长 ${S.g.leader}号 </span>提名`)}</div>
     <div class="act-side vote"><button class="yes" data-vote="1">${ic("check")}<span>赞成</span></button><button class="no" data-vote="0">${ic("cross")}<span>反对</span></button></div>`,
-  quest: (p) => `${head("swords", "你在任务队伍中：秘密出牌", p.fails_needed === 2 ? "本轮需要2张失败才失败" : "只要出现1张失败，任务就失败")}
-    <div class="act-main">${teamLine(p.team, "同车")}<p class="act-note">出牌不记名，只公布失败牌的张数${p.can_fail ? "" : "；好人只能出成功"}</p></div>
+  quest: (p) => `${head("swords", `<span><span class="ah-long nw">你在任务队伍中：</span><span class="nw">秘密出牌</span></span>`, p.fails_needed === 2 ? "本轮需要2张失败才失败" : "只要出现1张失败，任务就失败")}
+    <div class="act-main">${teamLine(p.team, "同车")}<p class="act-note"><span class="nw">出牌不记名，</span><span class="nw">只公布失败牌的张数</span>${p.can_fail ? "" : `<span class="nw">；好人只能出成功</span>`}</p></div>
     <div class="act-side cards">
       <button class="card-btn ok" data-card="success">${ic("chalice")}<span>成功</span></button>
       <button class="card-btn bad" data-card="fail" ${p.can_fail ? "" : 'disabled title="好人只能出成功"'}>${ic(p.can_fail ? "dagger" : "lock")}<span>失败</span>${p.can_fail ? "" : "<small>好人不能出</small>"}</button>
@@ -1729,6 +1853,15 @@ const PANELS = {
     <div class="act-main">${speechBox("刺杀前想说的话（可选）", "想说的话（可选）")}</div>
     <div class="act-side with-pick">${pick()}<button class="evil" id="act-submit" disabled>${ic("dagger")}<span>刺杀！</span></button></div>`,
 };
+
+const TURN_NAME = {
+  propose: "组建队伍", speak: "发言", vote: "投票", quest: "秘密出牌", lady_choose: "用湖中仙女查验一名玩家",
+  lady_announce: "公布查验结果", assassin_suggest: "刺杀讨论", assassinate: "刺杀梅林",
+};
+function setTurnNote(text) {
+  const el = $("#sr-turn");
+  if (el && el.textContent !== text) el.textContent = text;
+}
 
 function setAction(html, mode = null) {
   const box = $("#action");
@@ -1775,8 +1908,11 @@ function renderAction() {
       const fresh = S.live || S.revealFresh;
       setAction(`<div class="panel panel-${p.type}${fresh ? " enter" : ""}" role="group" aria-label="轮到你了">${PANELS[p.type] ? PANELS[p.type](p) : ""}</div>`);
       bindAction(p);
+      // 读屏软件：轮到你时念一句（焦点不一定移过去）
+      setTurnNote(`轮到你了：${TURN_NAME[p.type] || "行动"}`);
       refitMoment();
-      if (S.live) bringSeatsIntoView(!!selection());
+      // 刷新恢复 / 开局就轮到你（首任队长）时也要让出你的座位：直接跳到位，不做平滑滚动
+      bringSeatsIntoView(!!selection(), !S.live);
       const ta = $("#act-speech");
       if (ta && DESKTOP.matches) ta.focus({ preventScroll: true });
     }
@@ -1784,6 +1920,7 @@ function renderAction() {
     return;
   }
   S.pendingKey = null;
+  setTurnNote("");
   if (g.status === "ended") {
     const me = g.you;
     const verdict = me ? (me.team === g.winner ? "你赢了" : "这局输了") : "观战结束";
@@ -1813,10 +1950,12 @@ function renderAction() {
 // 手机上（行动栏吸底）轮到你点人：把整圈座位滚到行动栏上方；放不下时至少让你和两边的人露出来。
 // 发言 / 投票 / 出牌（pick = false）：你的座位被升起的行动栏挡住时轻轻往下挪一点——最多把顶栏挪出屏幕；
 // 已经往下翻去看记录了就不动
-function bringSeatsIntoView(pick = true) {
+function bringSeatsIntoView(pick = true, instant = false) {
   const bar = $(".action-bar");
   if (!bar || getComputedStyle(bar).position !== "sticky") return;
+  const gen = FXGEN;
   requestAnimationFrame(() => {
+    if (gen !== FXGEN) return;
     const seats = document.querySelectorAll("#table .seat");
     if (!seats.length) return;
     const avail = window.innerHeight - bar.offsetHeight;
@@ -1833,7 +1972,7 @@ function bringSeatsIntoView(pick = true) {
       if (bot > avail - 6 && room > 4) dy = Math.min(bot - (avail - 6), room);
     } else if (bot - top > avail - 12 || bot > avail - 6) dy = bot - (avail - 6);
     else if (top < 6) dy = top - 6;
-    if (Math.abs(dy) > 4) window.scrollBy({ top: dy, behavior: reduceMotion() ? "auto" : "smooth" });
+    if (Math.abs(dy) > 4) window.scrollBy({ top: dy, behavior: instant || reduceMotion() ? "auto" : "smooth" });
   });
 }
 
@@ -1974,7 +2113,7 @@ function bindAction(p) {
       S.selected = [];
       S.pendingKey = `done${p.id}`;
       showWaiting(`<span class="w-v">已提交，等待其他玩家</span>`);
-      setTimeout(poll, 150);
+      pollSoon(150);
     } catch (err) {
       S.busy = false;
       box.querySelectorAll("button").forEach((b) => (b.disabled = false));
@@ -2165,9 +2304,15 @@ function eventHtml(ev) {
 const HOLD_LOG = new Set(["quest_result", "evil_reveal", "assassination", "game_end"]);
 // 记录是否“贴着底部”：由用户的滚动决定（不在平滑滚动途中去读 scrollTop——那时它还没到位）
 const LOG = { pinned: true, auto: 0 };
+// 往上翻着看早先的发言、票型时，新记录不把人拽回底部：记录区底部浮出一枚“有新记录”，点一下再回到最新
+function newRowsPill(show) {
+  const pill = $("#log-new");
+  if (pill && pill.hidden === show) pill.hidden = !show;
+}
 function logToBottom(smooth) {
   const log = $("#log");
   LOG.pinned = true;
+  newRowsPill(false);
   if (smooth && !reduceMotion()) {
     LOG.auto = performance.now() + 700;
     log.scrollTo({ top: log.scrollHeight, behavior: "smooth" });
@@ -2179,9 +2324,11 @@ function logToBottom(smooth) {
 (() => {
   const log = $("#log");
   log.addEventListener("scroll", () => {
-    if (log.scrollHeight - log.scrollTop - log.clientHeight < 120) LOG.pinned = true;
+    if (log.scrollHeight - log.scrollTop - log.clientHeight < 120) { LOG.pinned = true; newRowsPill(false); }
     else if (performance.now() > LOG.auto) LOG.pinned = false;
   }, { passive: true });
+  // 离最新的记录很远时直接跳过去（长长的平滑滚动反而让人等），近的才平滑滚过去
+  $("#log-new").addEventListener("click", () => logToBottom(log.scrollHeight - log.scrollTop - log.clientHeight < 2.5 * log.clientHeight));
   // 用户自己动手滚动：立刻接管，不再当成程序的平滑滚动
   for (const t of ["wheel", "touchstart", "pointerdown", "keydown"]) log.addEventListener(t, () => { LOG.auto = 0; }, { passive: true });
   // 记录区变矮（行动栏升高）时，贴着底部的记录继续贴着底部：最新一条不会被切掉一截
@@ -2208,6 +2355,9 @@ function appendEvents(items, rebuild = false) {
   const log = $("#log");
   if (rebuild) {
     const gen = ++LOGGEN;
+    // 整段重建不让读屏软件把几十条记录从头念一遍：补完之前先关掉朗读，补完再打开（之后的新记录照常朗读）
+    log.setAttribute("aria-live", "off");
+    const speak = () => { if (gen === LOGGEN) log.removeAttribute("aria-live"); };
     log.textContent = "";
     const tail = items.slice(-LOG_TAIL);
     let rest = items.slice(0, items.length - tail.length);
@@ -2228,14 +2378,18 @@ function appendEvents(items, rebuild = false) {
       }
       return rest.length > 0;
     };
-    const more = () => { if (step()) idle(more); };
-    LOG.flush = () => { while (step()); };
+    const more = () => { if (step()) idle(more); else speak(); };
+    LOG.flush = () => { while (step()); speak(); };
     if (rest.length) idle(more);
+    else requestAnimationFrame(speak);
     return;
   }
-  const html = items.map(([ev, fresh]) => rowHtml(ev, fresh)).join("");
-  if (html) log.insertAdjacentHTML("beforeend", html);
-  if (html && (LOG.pinned || !S.ended)) logToBottom(true);
+  const rows = items.map(([ev, fresh]) => rowHtml(ev, fresh));
+  const html = rows.join("");
+  if (!html) return;
+  log.insertAdjacentHTML("beforeend", html);
+  if (LOG.pinned) logToBottom(true);
+  else if (rows.some((h) => h && !h.startsWith('<div class="evw held'))) newRowsPill(true);
 }
 // 还没补完的早期记录立刻补完（要从头看内心独白时）
 function flushLog() {
@@ -2250,6 +2404,7 @@ function releaseLog(id) {
   el.classList.remove("held");
   el.classList.add("fresh");
   if (LOG.pinned) logToBottom(true);
+  else newRowsPill(true);
 }
 
 $("#show-thoughts").addEventListener("change", (e) => {

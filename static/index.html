@@ -191,10 +191,12 @@
             <span class="ts-text"><span class="ts-ic" data-art="thought" aria-hidden="true"></span><span class="ts-long">显示 </span>AI 内心独白</span>
           </label>
         </div>
-        <div id="log" class="log"></div>
+        <div id="log" class="log" role="log" aria-label="对局记录"></div>
+        <button type="button" id="log-new" class="log-new" hidden><span data-art="down" aria-hidden="true"></span><span>有新记录</span></button>
       </div>
     </main>
 
+    <div id="sr-turn" class="sr-only" role="status"></div>
     <footer class="action-bar">
       <div id="action" class="action"></div>
       <button id="btn-hint" class="hint-btn" title="让教练根据你能看到的信息给出建议"><span data-art="candle" aria-hidden="true"></span><span class="hint-label">教练</span></button>
