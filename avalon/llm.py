@@ -153,12 +153,19 @@ class LLMBrain:
 
     def quest(self, team: list[int]) -> Decision:
         g = self.game
-        if g.team_of_seat(self.seat) == GOOD:
-            return Decision("success")
         q = g.quests[g.quest_index]
+        good, evil = g.score()
+        label = f"第{q['index'] + 1}轮·出任务"
+        if g.team_of_seat(self.seat) == GOOD:
+            # 好人也走一次模型：否则只有坏人在“思考”，出牌耗时、思考标记和调用次数都会暴露车上谁是坏人
+            task = (
+                f"你在第{q['index'] + 1}轮任务的队伍里，队员：{_seats(team)}。当前比分 好人{good} : {evil}坏人。"
+                "你是好人，只能出“成功”。简单想想这辆车里谁可能是坏人，然后出牌。"
+            )
+            schema = '{"thought": "内心推理", "card": "成功"}'
+            return self._call(label, task, schema, lambda data: Decision("success"), lambda: Decision("success"))
         mates = [s for s, _ in g.knowledge(self.seat)]
         mates_on = [s for s in team if s in mates]
-        good, evil = g.score()
         task = (
             f"你在第{q['index'] + 1}轮任务的队伍里，队员：{_seats(team)}。本轮需要{q['fails_needed']}张失败牌任务才会失败。"
             f"当前比分 好人{good} : {evil}坏人。你是坏人，秘密选择出“成功”还是“失败”。"
@@ -175,7 +182,7 @@ class LLMBrain:
                 return Decision("fail")
             raise ValueError("card 只能是“成功”或“失败”")
 
-        return self._call(f"第{q['index'] + 1}轮·出任务", task, schema, parse, lambda: self.fallback.quest(team))
+        return self._call(label, task, schema, parse, lambda: self.fallback.quest(team))
 
     def lady_choose(self, candidates: list[int]) -> Decision:
         task = f"你持有湖中仙女，可以秘密查验一名玩家的真实阵营。可选：{_seats(candidates)}。选择你要查验的人。"

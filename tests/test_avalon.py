@@ -210,6 +210,7 @@ class FakeDeepSeek:
     def __init__(self, mode="ok"):
         self.mode = mode
         self.calls = 0
+        self.tasks: list[str] = []
         outer = self
 
         class H(BaseHTTPRequestHandler):
@@ -232,6 +233,7 @@ class FakeDeepSeek:
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 outer.calls += 1
+                outer.tasks.append(body["messages"][-1]["content"].split("## 现在轮到你")[-1])
                 if self.headers.get("Authorization") != "Bearer good-key":
                     return self._send(401, {"error": {"message": "auth"}})
                 content = "这不是JSON" if outer.mode == "garbage" else fake_reply(body["messages"])
@@ -266,6 +268,21 @@ class LLMTest(unittest.TestCase):
 
     def test_check_key(self):
         self.assertIn("deepseek-chat", self.client().check())
+
+    def test_quest_calls_do_not_reveal_evil(self):
+        """出任务时车上每个 AI 都要调用模型：否则耗时、思考标记、调用次数会暴露谁是坏人。"""
+        client = self.client()
+        g = Game(7, human=False, seed=11, brain_factory=make_brain_factory(client))
+        g.run()
+        check_invariants(self, g)
+        quest_prompts = [t for t in self.fake.tasks if '"card"' in t]
+        played = sum(len(q["team"]) for q in g.quests if q["team"])
+        self.assertEqual(len(quest_prompts), played)  # 好人坏人一视同仁
+        self.assertTrue(any("你是好人，只能出" in t for t in quest_prompts))
+        for q in g.quests:
+            for s, c in (q.get("cards") or {}).items():
+                if g.team_of_seat(s) == GOOD:
+                    self.assertEqual(c, "success")
 
     def test_full_llm_game(self):
         client = self.client()
