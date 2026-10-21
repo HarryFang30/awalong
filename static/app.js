@@ -724,29 +724,30 @@ function centerText() {
   return `${kicker}<div class="phase">${head}</div><div class="tc-line">${phase}</div>${g.proposal ? teamSlots(g.proposal) : ""}`;
 }
 
+// 你知道的人：迷你纹章 + 座位号 + 信息，整枚不断行（“4号 · 坏人队友”不会被拆成两行）
+const knowChip = (seat, label, cls = labelClass(label)) =>
+  `<span class="kchip ${cls}">${seatEmblem(seat, "xs")}<b>${seat}号</b><span class="kl">${esc(label)}</span></span>`;
+
 function renderIdentity() {
   const y = S.g.you;
   const box = $("#identity");
   if (!y) {
     const cls = S.g.spectator ? "identity spectator" : "identity";
     if (box.className !== cls) box.className = cls;
-    patch(box, S.g.spectator
-      ? `<div class="secret"><div class="id-art">${ART.icon("eye", "emblem")}<span class="id-no">观战</span></div>
-         <div class="id-body"><div class="kicker">上帝视角</div><div class="role">观战模式</div>
-         <p class="ability">所有身份公开，AI 的内心独白会实时出现在对局记录里。看看梅林怎么藏、刺客怎么找、坏人怎么配合。</p></div></div>`
-      : "");
+    patch(box, S.g.spectator ? spectatorCard() : "");
     return;
   }
   const know = y.knowledge.length
-    ? y.knowledge.map((k) => `<span class="kchip ${labelClass(k.label)}"><i style="--c:${seatColor(k.seat)}"></i>${k.seat}号 · ${esc(k.label)}</span>`).join("")
+    ? y.knowledge.map((k) => knowChip(k.seat, k.label)).join("")
     : `<span class="know-none">没有额外信息，全靠推理。</span>`;
   const tip = y.team === "evil" && y.role !== "oberon"
-    ? `<p class="tip">坏人默契：已知队友同车且只需1张失败时，由座位号最小的坏人出失败。</p>` : "";
-  const cls = `identity ${y.team}${S.covered ? " covered" : ""}`;
+    ? `<p class="tip">${ic("swords")}<span>坏人默契：已知队友同车且只需1张失败时，由座位号最小的坏人出失败。</span></p>` : "";
+  // 遮住时连阵营底色也换成中性的皮革色：旁边的人看不出你是哪一边
+  const cls = S.covered ? "identity covered" : `identity ${y.team}`;
   if (box.className !== cls) box.className = cls;
   patch(box, `
-    <button class="ghost peek" id="btn-cover" aria-pressed="${S.covered}">${S.covered ? "显示" : "遮住"}</button>
-    <div class="secret">
+    <button class="ghost peek" id="btn-cover" aria-pressed="${S.covered}" aria-label="${S.covered ? "显示身份卡" : "遮住身份卡"}" title="${S.covered ? "翻开身份卡" : "把身份卡扣过去（旁边有人时）"}">${ic(S.covered ? "eye" : "eyeoff")}<span>${S.covered ? "显示" : "遮住"}</span></button>
+    <div class="secret"${S.covered ? ' aria-hidden="true"' : ""}>
       <div class="id-art">${ART.role(y.role)}<span class="id-no">${y.seat}号</span></div>
       <div class="id-body">
         <div class="kicker">你的身份 · ${y.seat}号座位</div>
@@ -756,12 +757,34 @@ function renderIdentity() {
         ${tip}
       </div>
     </div>
-    <div class="card-back" aria-hidden="true"><span>身份已遮住</span></div>`);
+    <div class="card-back" aria-hidden="${!S.covered}"><span class="cb-crest">${ART.crest()}</span><span class="cb-words"><span class="cb-text">身份已遮住</span><span class="cb-sub">点一下牌背翻开</span></span></div>`);
 }
+
+// 观战：上帝视角的“阵营一览”——好人一行、坏人一行，每人一枚纹章 + 角色名，和圆桌上的盾一一对应
+function spectatorCard() {
+  const g = S.g;
+  const ps = g.players.filter((p) => p.team);
+  const row = (team) => {
+    const list = ps.filter((p) => p.team === team);
+    return `<div class="roster ${team}"><span class="ro-k">${TEAM_NAME[team]}<b>${list.length}</b></span>` +
+      list.map((p) => knowChip(p.seat, p.role_name, team)).join("") + "</div>";
+  };
+  const roster = ps.length
+    ? row("good") + row("evil")
+    : `<p class="ability">所有身份公开，AI 的内心独白会实时出现在对局记录里。</p>`;
+  return `<div class="secret"><div class="id-art">${ART.icon("eye", "emblem")}<span class="id-no">观战</span></div>
+    <div class="id-body"><div class="kicker">上帝视角 · ${g.n}人局</div>
+    <div class="role">观战模式<span class="team">身份全公开</span></div>
+    ${roster}
+    <p class="tip">${ic("thought")}<span>看梅林怎么藏、刺客怎么找、坏人怎么配合——打开右边的内心独白对照着看。</span></p></div></div>`;
+}
+
 $("#identity").addEventListener("click", (e) => {
-  if (!e.target.closest("#btn-cover")) return;
+  // 按钮切换；扣着的时候点整张牌背也能翻开
+  if (!e.target.closest("#btn-cover") && !(S.covered && e.target.closest(".card-back"))) return;
   S.covered = !S.covered;
   renderIdentity();
+  $("#btn-cover")?.focus({ preventScroll: true });
 });
 
 function renderUsage() {
@@ -1191,7 +1214,7 @@ function showReveal(y) {
   if (!wrap) return;
   wrap.querySelectorAll(".reveal").forEach((el) => el.remove());
   const know = y.knowledge.length
-    ? y.knowledge.map((k) => `<span class="kchip ${labelClass(k.label)}">${seatEmblem(k.seat, "xs")}${k.seat}号 · ${esc(k.label)}</span>`).join("")
+    ? y.knowledge.map((k) => knowChip(k.seat, k.label)).join("")
     : `<span class="rv-none">没有额外信息，全靠推理</span>`;
   const el = document.createElement("div");
   el.className = `reveal ${y.team}`;
@@ -1658,18 +1681,23 @@ function thoughts(ev, seats) {
   if (!ev.thoughts) return "";
   return seats
     .filter((s) => ev.thoughts[String(s)])
-    .map((s) => `<div class="thought">${ic("thought")}<div><b>${s}号「${esc(nameOf(s))}」：</b>${esc(ev.thoughts[String(s)])}</div></div>`)
+    .map((s) => `<div class="thought"><span class="th-ic">${ic("thought")}</span><div class="th-body">` +
+      `<div class="th-who"><b>${s}号「${esc(nameOf(s))}」</b><span class="th-k">内心独白</span></div>` +
+      `<div class="th-text">${esc(ev.thoughts[String(s)])}</div></div></div>`)
     .join("");
 }
 
+// 发言：羊皮纸小笺（金线角花 + 细边），左边是发言人的纹章；你的发言靠右、金色；“过”只占一行
+// tags: [文字, 样式]，样式 lead = 队长（金）、kill = 刺杀相关（红）
 function bubble(seat, text, tags = []) {
   const me = player(seat)?.is_human;
   const passed = !text;
-  return `<div class="speech${me ? " mine" : ""}">
+  const tagHtml = tags.map(([t, c]) => `<span class="tag-r ${c || ""}">${t}</span>`).join("");
+  return `<div class="speech${me ? " mine" : ""}${passed ? " passed" : ""}">
     <div class="mini">${seatEmblem(seat, "sm")}</div>
-    <div class="bubble${passed ? " passed" : ""}">
-      <div class="who"><b>${seat}号 ${esc(nameOf(seat))}</b>${me ? "（你）" : ""}${tags.map((t) => `<span class="tag-r">${t}</span>`).join("")}</div>
-      ${passed ? "过" : esc(text)}
+    <div class="bubble">
+      <div class="who"><span class="ws">${seat}号</span><b class="wn">${esc(nameOf(seat))}</b>${me ? `<span class="wme">你</span>` : ""}${tagHtml}${passed ? `<span class="pass-mark">过</span>` : ""}</div>
+      ${passed ? "" : `<div class="say">${esc(text)}</div>`}
     </div></div>`;
 }
 
@@ -1686,20 +1714,26 @@ function eventHtml(ev) {
       return `<div class="ev ev-proposal">${ic("crown")}<div>${seatTag(ev.leader)} 第${ev.attempt}次提名：${seatChips(ev.team)}</div></div>` + thoughts(ev, [ev.leader]);
     case "speech": {
       const tags = [];
-      if (ev.leader) tags.push("队长");
-      if (ev.suggest) tags.push(`建议刺杀 ${ev.suggest}号`);
-      if (ev.assassin) tags.push("刺客");
+      if (ev.leader) tags.push(["队长", "lead"]);
+      if (ev.suggest) tags.push([`建议刺杀 ${ev.suggest}号`, "kill"]);
+      if (ev.assassin) tags.push(["刺客", "kill"]);
       return `<div class="ev">${bubble(ev.seat, ev.text, tags)}</div>` + thoughts(ev, [ev.seat]);
     }
     case "vote": {
       const entries = Object.entries(ev.votes).map(([s, v]) => [+s, v]).sort((a, b) => a[0] - b[0]);
       const yes = entries.filter(([, v]) => v).length;
+      const no = entries.length - yes;
       const team = ev.team || [];
       const chips = entries.map(([s, v]) =>
         `<span class="chip ${v ? "yes" : "no"}${team.includes(s) ? " on" : ""}" title="${s}号${v ? "赞成" : "反对"}${team.includes(s) ? "（在车上）" : ""}">${s}号${ic(v ? "check" : "cross")}</span>`).join("");
+      // 赞成 / 反对的比例条；中间的刻度是“过半线”，赞成要越过它才发车
+      const share = entries.length ? ((100 * yes) / entries.length).toFixed(1) : 0;
+      const bar = `<div class="vbar" role="img" aria-label="赞成 ${yes} 票，反对 ${no} 票（赞成超过半数才发车）">` +
+        `<span class="vb-track"><i class="vb-yes" style="width:${share}%"></i></span><b class="vb-mid" title="过半线"></b></div>`;
       return `<div class="ev ev-vote ${ev.approved ? "ok" : "rej"}"><div class="vhead">${ic("ballot")}<span>投票</span>
+        ${ev.attempt ? `<span class="vk">第${ev.attempt}次提名</span>` : ""}
         <span class="${ev.approved ? "verdict-yes" : "verdict-no"}">${ev.approved ? "通过" : "否决"}</span>
-        <span class="tally">${yes} : ${entries.length - yes}</span></div><div class="chips">${chips}</div></div>` + thoughts(ev, all);
+        <span class="tally" title="赞成 : 反对"><b class="ty">${yes}</b><i>:</i><b class="tn">${no}</b></span></div>${bar}<div class="chips">${chips}</div></div>` + thoughts(ev, all);
     }
     case "quest_result": {
       let extra = "";
@@ -1769,9 +1803,13 @@ $("#show-thoughts").addEventListener("change", (e) => {
 // =====================================================================
 // 弹窗：教练 / 结算 / 复盘 / 规则
 // =====================================================================
-function openModal(title, html, kind = "") {
+// foot：固定在卷轴底部、不随内容滚动的一行按钮（结算的“再来一局”永远看得见）
+function openModal(title, html, kind = "", foot = "") {
   $("#modal-title").textContent = title;
   $("#modal-body").innerHTML = html;
+  const f = $("#modal-foot");
+  f.innerHTML = foot;
+  f.hidden = !foot;
   const m = $("#modal");
   m.dataset.kind = kind;
   if (!m.open) m.showModal();
@@ -1780,20 +1818,86 @@ function openModal(title, html, kind = "") {
 $("#modal-close").onclick = () => $("#modal").close();
 $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") $("#modal").close(); });
 
+// 教练的话（提示 / 复盘）：一封信，标题、要点、加粗都按羊皮卷排版
+const letter = (text) => `<div class="letter">${md(text)}</div>`;
+const loadingNote = (text) => `<div class="loading"><span class="ld-ic">${ic("candle")}</span><span>${text}<span class="dots"></span></span></div>`;
+
 $("#btn-hint").onclick = async () => {
   if (!S.gameId) return;
   const btn = $("#btn-hint");
   btn.disabled = true;
-  openModal("教练提示", `<div class="loading">教练正在看你的牌面和局势<span class="dots"></span></div>`, "hint");
+  openModal("教练提示", loadingNote("教练正在看你的牌面和局势"), "hint");
   try {
     const r = await api(`/api/games/${S.gameId}/hint`, {});
-    openModal("教练提示", `<div class="letter">${md(r.text)}</div><p class="muted small note-line">教练只使用你能看到的信息，不会偷看别人的身份。</p>`, "hint");
+    openModal("教练提示", `${letter(r.text)}<p class="note-line">${ic("eye")}<span>教练只使用你能看到的信息，不会偷看别人的身份。</span></p>`, "hint");
   } catch (err) {
     openModal("教练提示", `<p class="error">${esc(err.message)}</p>`, "hint");
   } finally {
     btn.disabled = S.g?.status !== "running" || S.g?.spectator;
   }
 };
+
+// 结算横幅里的五枚任务火漆（和顶栏同一套样式）：成功 / 失败 / 没打到的轮次
+function questSeals(g) {
+  return g.quests.map((q, i) => {
+    const done = q.success === true || q.success === false;
+    const cls = q.success === true ? "success" : q.success === false ? "fail" : "unplayed";
+    const title = `第${i + 1}轮：${q.size}人，${done ? `${q.success ? "成功" : "失败"}（${q.fails}张失败）` : "未进行"}`;
+    const face = q.success === true ? ic("check") : q.success === false ? ic("cross") : q.size;
+    const fails = done && q.fails > 1 ? `<span class="qf">${q.fails}败</span>` : "";
+    return `<span class="quest ${cls}" title="${title}"><span class="qn">${face}</span>${fails}</span>`;
+  }).join("");
+}
+
+// 练习数据：每块一个数字 + 一句解释；tone = good / bad 给数字上色（做得好是绿，要改进是红）
+const tile = (k, v, sub = "", tone = "") =>
+  `<div class="tile${tone ? " " + tone : ""}"><span class="tk">${k}</span><span class="tv">${v}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
+
+function endTiles(g, me, marks) {
+  const st = g.stats || {};
+  const tiles = [];
+  const markTile = () => tiles.push(marks.total
+    ? tile("身份标记", `${marks.right}<i>/</i>${marks.total}`, "猜对 / 标记", marks.right * 2 >= marks.total ? (marks.right === marks.total ? "good" : "") : "bad")
+    : tile("身份标记", "—", "下局点座位旁的“标记”试试"));
+  if (me && me.team === "good") {
+    const m = st[String(me.seat)];
+    if (m && m.votes) {
+      const acc = Math.round((100 * m.correct) / m.votes);
+      tiles.push(tile("投票正确率", `${acc}%`, `${m.correct}/${m.votes} 票判断对`, acc >= 75 ? "good" : acc < 50 ? "bad" : ""));
+      tiles.push(tile("放坏人上车", `${m.approve_evil}<small>次</small>`, "赞成了含坏人的车", m.approve_evil ? "bad" : "good"));
+      tiles.push(tile("误拦好车", `${m.reject_clean}<small>次</small>`, "反对了全是好人的车", m.reject_clean >= 2 ? "bad" : m.reject_clean ? "" : "good"));
+    }
+    markTile();
+  } else if (me) {
+    const m = st[String(me.seat)];
+    const rode = g.quests.filter((q) => q.team && q.team.includes(me.seat) && q.success !== null).length;
+    if (m) tiles.push(tile("出失败牌", `${m.fails_played}<small>张</small>`, "坏人只有出失败才能拿分"));
+    tiles.push(tile("混上任务车", `${rode}<small>次</small>`, "坏人上了车才能破坏任务", rode ? "good" : ""));
+    const kill = S.events.find((e) => e.type === "assassination");
+    if (kill) {
+      const merlin = g.players.find((p) => p.role === "merlin");
+      const who = kill.assassin === me.seat ? "你" : `${kill.assassin}号`;
+      tiles.push(tile("刺杀梅林", kill.hit ? "刺中" : "落空",
+        `${who}刺向 ${kill.target}号${!kill.hit && merlin ? `，梅林是 ${merlin.seat}号` : ""}`, kill.hit ? "good" : "bad"));
+    }
+    markTile();
+  } else {
+    // 观战：整桌好人的投票水平、票最准的人、坏人出的失败牌、被否决的提名（比分已在横幅的火漆上）
+    const goods = g.players.filter((p) => p.team === "good" && st[String(p.seat)]?.votes);
+    const sum = (f) => goods.reduce((a, p) => a + st[String(p.seat)][f], 0);
+    if (goods.length) {
+      tiles.push(tile("好人投票正确率", `${Math.round((100 * sum("correct")) / sum("votes"))}%`, `好人一共投了 ${sum("votes")} 票`));
+      const rate = (p) => st[String(p.seat)].correct / st[String(p.seat)].votes;
+      const best = goods.reduce((a, p) => (rate(p) > rate(a) ? p : a));
+      tiles.push(tile("票最准的好人", `${Math.round(100 * rate(best))}%`, `${best.seat}号「${esc(best.name)}」`, "good"));
+    }
+    const fails = g.players.filter((p) => p.team === "evil").reduce((a, p) => a + (st[String(p.seat)]?.fails_played || 0), 0);
+    tiles.push(tile("坏人出失败", `${fails}<small>张</small>`, "整局的失败牌"));
+    const rejects = S.events.filter((e) => e.type === "vote" && !e.approved).length;
+    tiles.push(tile("被否决的提名", `${rejects}<small>次</small>`, "同一轮连续5次坏人直接赢"));
+  }
+  return tiles.join("");
+}
 
 function showEndModal() {
   const g = S.g;
@@ -1802,116 +1906,132 @@ function showEndModal() {
   const win = me && g.winner === me.team;
   const winner = `${g.winner === "good" ? "好人" : "坏人"}阵营获胜`;
   const title = me ? (win ? "你赢了！" : "这局输了") : winner;
-  const sub = me ? `${winner} · 你是 ${esc(me.role_name)}` : "观战结束";
-  let markTotal = 0;
-  let markRight = 0;
+  const sub = me ? `${winner} · 你是${esc(me.role_name)}` : "观战结束 · 上帝视角";
+  const marks = { total: 0, right: 0 };
   const rows = g.players.map((p) => {
     const m = S.marks[p.seat] || "";
-    let markCell = "";
+    let markCell = `<span class="muted">-</span>`;
     if (m) {
       const ok = m === "merlin" ? p.role === "merlin" : m === p.team;
-      markTotal++;
-      if (ok) markRight++;
-      markCell = `<span class="mk ${ok ? "ok" : "bad"}">${MARK_TEXT[m]} ${ok ? "✓" : "✗"}</span>`;
+      marks.total++;
+      if (ok) marks.right++;
+      markCell = `<span class="mk ${ok ? "ok" : "bad"}">${MARK_TEXT[m]}${ic(ok ? "check" : "cross")}</span>`;
     }
     const st = g.stats?.[String(p.seat)];
+    const good = p.team === "good";
     const acc = st && st.votes ? Math.round((100 * st.correct) / st.votes) + "%" : "-";
     return `<tr class="${p.is_human ? "me-row" : ""}">
-      <td><span class="who-cell">${seatEmblem(p.seat, "sm")}${esc(p.name)}${p.is_human ? "（你）" : ""}</span></td>
+      <td><span class="who-cell">${seatEmblem(p.seat, "sm")}<span>${esc(p.name)}${p.is_human ? "<small>（你）</small>" : ""}</span></span></td>
       <td><span class="label ${p.team}">${esc(p.role_name)}</span></td>
-      <td>${p.team === "good" ? acc : "-"}</td>
-      <td>${st && p.team === "good" ? st.proposals_with_evil + "/" + st.proposals : "-"}</td>
+      <td class="num">${good ? acc : "-"}</td>
+      <td class="num">${st && good ? st.proposals_with_evil + "/" + st.proposals : "-"}</td>
+      <td class="num">${st && !good ? st.fails_played : "-"}</td>
       ${me ? `<td>${markCell}</td>` : ""}</tr>`;
   }).join("");
-  const myStats = me && g.stats?.[String(me.seat)];
   const score = g.score || [g.quests.filter((q) => q.success === true).length, g.quests.filter((q) => q.success === false).length];
-  const tiles = [`<div class="tile"><span class="tk">任务比分</span><span class="tv"><b class="t-good">${score[0]}</b> : <b class="t-evil">${score[1]}</b></span></div>`];
-  if (me && me.team === "good" && myStats && myStats.votes) {
-    tiles.push(`<div class="tile"><span class="tk">你的投票正确率</span><span class="tv">${Math.round((100 * myStats.correct) / myStats.votes)}%</span></div>`);
-  }
-  if (me) {
-    tiles.push(`<div class="tile"><span class="tk">身份标记</span><span class="tv">${markTotal ? `${markRight}/${markTotal}` : "—"}</span></div>`);
-  }
-  let markLine = "";
-  if (me) {
-    markLine = markTotal
-      ? `<p>你的身份标记：标了 ${markTotal} 人，猜对 ${markRight} 人。</p>`
-      : `<p class="muted small">小技巧：对局中点击座位下方的“标记”记录你的判断，结算时会告诉你猜对了几个。</p>`;
-  }
   const kind = !me ? "neutral" : win ? "win" : "lose";
+  const tiles = endTiles(g, me, marks);
   const html = `
     <div class="end-banner ${kind} team-${g.winner}">
       <div class="eb-emblem">${ic(!me ? "swords" : win ? "crown" : g.winner === "good" ? "chalice" : "dagger")}</div>
       <div class="eb-title">${title}</div>
       <div class="eb-sub">${sub}</div>
+      <div class="eb-track" aria-label="任务比分 好人 ${score[0]} : 坏人 ${score[1]}"><span class="eb-seals">${questSeals(g)}</span>
+        <span class="eb-score"><b>${score[0]}</b><i>:</i><b>${score[1]}</b></span></div>
     </div>
     <p class="end-reason">${esc(g.end_reason)}</p>
-    <div class="end-stats">${tiles.join("")}</div>
+    <h3>${me ? "你的练习数据" : "本局数据"}</h3>
+    <div class="end-stats">${tiles}</div>
     <h3>身份揭晓</h3>
     <div class="table-scroll"><table class="reveal-table">
-      <thead><tr><th>玩家</th><th>身份</th><th title="赞成无坏人的车、反对有坏人的车算正确（仅统计好人）">投票正确率</th><th title="好人当队长时提名的队伍含坏人次数 / 当队长次数">含坏人的提名</th>${me ? "<th>你的标记</th>" : ""}</tr></thead>
+      <thead><tr><th>玩家</th><th>身份</th><th title="赞成无坏人的车、反对有坏人的车算正确（仅统计好人）">投票正确率</th><th title="好人当队长时提名的队伍含坏人次数 / 当队长次数">含坏人的提名</th><th title="坏人在任务中出的失败牌">出失败</th>${me ? "<th>你的标记</th>" : ""}</tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
-    ${markLine}
-    ${myStats && me.team === "good" ? `<p>你作为好人：赞成含坏人的车 ${myStats.approve_evil} 次，反对干净的车 ${myStats.reject_clean} 次。</p>` : ""}
-    <div class="end-actions">
-      <button class="primary" id="end-review">${me ? "AI 教练复盘" : "AI 整局点评"}</button>
-      <button id="end-thoughts">${ic("thought")}查看 AI 内心独白</button>
-      <button class="ghost" id="end-again">再来一局</button>
-    </div>
-    <div id="review-box"></div>`;
-  openModal("对局结算", html, "end");
-  $("#end-review").onclick = loadReview;
+    <div id="review-box" class="review-box"></div>`;
+  const foot = `<div class="end-actions">
+      <button class="ghost" id="end-thoughts" aria-label="查看 AI 内心独白" title="查看 AI 内心独白">${ic("thought")}<span>查看 AI 内心独白</span></button>
+      <button class="coach" id="end-review">${ic("candle")}<span>${me ? "AI 教练复盘" : "AI 整局点评"}</span></button>
+      <button class="primary" id="end-again">${ic("restart")}<span>再来一局</span></button>
+    </div>`;
+  openModal("对局结算", html, "end", foot);
+  $("#end-review").onclick = () => (S.g?.review ? showReview(true) : loadReview());
   $("#end-thoughts").onclick = () => {
     $("#show-thoughts").checked = true;
     document.body.classList.add("show-thoughts");
     $("#modal").close();
     $("#log").scrollTop = 0;
+    if (!DESKTOP.matches) $(".right")?.scrollIntoView({ block: "start", behavior: reduceMotion() ? "auto" : "smooth" });
   };
   $("#end-again").onclick = () => showSetup();
-  if (g.review) $("#review-box").innerHTML = `<h3>AI 教练复盘</h3><div class="letter">${md(g.review)}</div>`;
+  if (g.review) showReview(false);
+}
+
+// 复盘：写进结算卷轴底部；scroll = 滚到复盘的标题处（加载完成、或点“查看复盘”时）
+function showReview(scroll) {
+  const box = $("#review-box");
+  if (!box || !S.g?.review) return;
+  box.innerHTML = `<h3 class="review-h">${ic("candle")}<span>${S.g.you ? "AI 教练复盘" : "AI 整局点评"}</span></h3>${letter(S.g.review)}`;
+  const btn = $("#end-review");
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = `${ic("scroll")}<span>查看复盘</span>`;
+  }
+  if (scroll) scrollModalTo(box);
+}
+function scrollModalTo(el) {
+  const body = $("#modal-body");
+  const top = body.scrollTop + el.getBoundingClientRect().top - body.getBoundingClientRect().top - 14;
+  body.scrollTo({ top: Math.max(0, top), behavior: reduceMotion() ? "auto" : "smooth" });
 }
 
 async function loadReview() {
   const box = $("#review-box");
   const btn = $("#end-review");
+  const id = S.gameId;
   btn.disabled = true;
-  box.innerHTML = `<div class="loading">教练正在复盘整局（大约需要十几秒）<span class="dots"></span></div>`;
-  box.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth" });
+  btn.innerHTML = `${ic("candle")}<span>复盘中…</span>`;
+  box.innerHTML = loadingNote("教练正在复盘整局（大约需要十几秒）");
+  scrollModalTo(box);
   try {
-    const r = await api(`/api/games/${S.gameId}/review`, {});
+    const r = await api(`/api/games/${id}/review`, {});
+    if (S.gameId !== id) return;
     if (S.g) S.g.review = r.text;
-    box.innerHTML = `<h3>AI 教练复盘</h3><div class="letter">${md(r.text)}</div>`;
+    showReview(true);
   } catch (err) {
+    if (!box.isConnected) return;
     box.innerHTML = `<p class="error">${esc(err.message)}</p>`;
     btn.disabled = false;
+    btn.innerHTML = `${ic("candle")}<span>重试复盘</span>`;
   }
 }
 
 $("#btn-rules").onclick = () => {
   const n = S.g?.n || 7;
   const preset = S.config.presets[n];
+  const count = (team) => preset.roles.filter((r) => S.config.roles[r].team === team).length;
   const roles = [...new Set(preset.roles)]
     .map((r) => {
       const R = S.config.roles[r];
-      return `<li class="role-li"><span class="role-ic ${R.team}">${ART.role(r)}</span><div><b>${R.name}</b> <span class="label ${R.team}">${TEAM_NAME[R.team]}</span><br>${esc(R.ability)}</div></li>`;
+      const k = preset.roles.filter((x) => x === r).length;
+      return `<li class="role-li ${R.team}"><span class="role-ic ${R.team}">${ART.role(r)}</span><div class="role-tx"><div class="role-nm"><b>${esc(R.name)}</b>${k > 1 ? `<small>×${k}</small>` : ""}<span class="label ${R.team}">${TEAM_NAME[R.team]}</span></div><p>${esc(R.ability)}</p></div></li>`;
     })
     .join("");
   const sizes = preset.team_sizes
-    .map((z, i) => `<span class="qs${n >= 7 && i === 3 ? " two" : ""}" title="第${i + 1}轮">${z}</span>`).join("");
+    .map((z, i) => `<div class="sz"><span class="quest" title="第${i + 1}轮：${z}人${n >= 7 && i === 3 ? "，需要2张失败" : ""}"><span class="qn">${z}</span>${n >= 7 && i === 3 ? '<span class="two">2败</span>' : ""}</span><small>第${i + 1}轮</small></div>`).join("");
   openModal("规则速查", `
     <h3>流程</h3>
-    <ol>
+    <ol class="steps">
       <li>队长提名指定人数的队伍，其他人按顺序发言，然后所有人同时投票。</li>
       <li>赞成票<b>超过半数</b>才发车，否则队长交给下一位。同一轮<b>连续5次否决</b>，坏人直接获胜。</li>
       <li>队员秘密出牌：好人只能出成功，坏人可以出失败。出现失败牌任务就失败${n >= 7 ? "（本局第4轮需要2张失败）" : ""}。</li>
       <li>先赢3轮的阵营获胜；但好人赢下3轮后，刺客还可以刺杀梅林翻盘。</li>
     </ol>
-    <h3>本局（${n}人）角色</h3>
+    <h3>本局角色<span class="h3-note">${n}人 · <span class="t-good">好人 ${count("good")}</span> · <span class="t-evil">坏人 ${count("evil")}</span></span></h3>
     <ul class="role-list">${roles}</ul>
-    <p class="sizes-line">任务人数：${sizes}</p>
+    <h3>任务人数</h3>
+    <div class="sizes">${sizes}</div>
     <h3>练习小贴士</h3>
-    <ul>
+    <ul class="tips">
       <li>任务失败后，记下车上的人和投赞成票的人——坏人常常支持有队友的车。</li>
       <li>反对“干净车”的人值得怀疑；第5次提名时乱投反对的人更值得怀疑。</li>
       <li>当梅林时别让票型太准；当刺客时找“票型最准、总能避开坏人”的人。</li>

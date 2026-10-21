@@ -144,6 +144,8 @@ const ART = (() => {
     waves: '<path d="M2.5 9c2-2 4-2 6 0s4 2 6 0 4-2 6.5 0M2.5 15c2-2 4-2 6 0s4 2 6 0 4-2 6.5 0" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>',
     dagger: '<path d="M12 1.5l2.2 3.6v9.6H9.8V5.1z" fill="currentColor"/><rect x="6.2" y="14.6" width="11.6" height="2.4" rx="1.2" fill="currentColor"/><rect x="11" y="17" width="2" height="3.8" fill="currentColor"/><circle cx="12" cy="21.6" r="1.5" fill="currentColor"/>',
     eye: '<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.3" fill="currentColor"/>',
+    // 闭眼（划掉的眼睛）：遮住身份卡
+    eyeoff: '<path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.3" fill="currentColor"/><path d="M4 3.5l16 17" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
     thought: '<path d="M7.2 16.5a4 4 0 0 1-.7-7.9 5.2 5.2 0 0 1 9.8-1.5 4.1 4.1 0 0 1 .9 8.1c-.4 1-1.3 1.3-2 1.3z" fill="currentColor"/><circle cx="6.2" cy="19.6" r="1.6" fill="currentColor"/><circle cx="3.4" cy="22" r="1" fill="currentColor"/>',
     candle: '<path d="M12 1.8c1.9 2.3 2.4 4 0 6.3-2.4-2.3-1.9-4 0-6.3z" fill="currentColor"/><rect x="9" y="9" width="6" height="10" rx="1.2" fill="currentColor"/><path d="M4.5 19.6h15a1.6 1.6 0 0 1 0 3.2h-15a1.6 1.6 0 0 1 0-3.2z" fill="currentColor"/>',
     check: '<path d="M4.5 12.5l4.8 4.8L19.5 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>',
