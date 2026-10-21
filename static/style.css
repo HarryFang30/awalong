@@ -622,8 +622,18 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .quest .two, .quest .qf {
   position: absolute; z-index: 1; font: 700 10.5px/1 var(--sans); padding: 3px 5px; border-radius: 3px; white-space: nowrap; text-shadow: none;
 }
-.quest .two { top: -6px; right: -16px; font-size: max(9.5px, calc(var(--q) * .25)); color: #2a1c10; background: linear-gradient(180deg, #f2c26c, var(--amber)); box-shadow: 0 0 0 1px #5a3a08, 0 2px 3px rgba(0, 0, 0, .5); }
-.quest .qf { bottom: -9px; right: -13px; color: #fff3ee; background: linear-gradient(180deg, #a3202e, #6e111c); box-shadow: 0 0 0 1px rgba(255, 190, 170, .55), 0 2px 3px rgba(0, 0, 0, .5); }
+/* 规则：“需2败”——琥珀色小牌挂在火漆正上方 */
+.quest .two {
+  top: -8px; left: 50%; transform: translateX(-50%); padding: 2px 4px; letter-spacing: -.3px;
+  font-size: max(9.5px, calc(var(--q) * .24)); color: #2a1c10; background: linear-gradient(180deg, #f2c26c, var(--amber)); box-shadow: 0 0 0 1px #5a3a08, 0 2px 3px rgba(0, 0, 0, .5);
+}
+/* 结果：出了几张失败牌——右下角挂几把小匕首（和翻牌时失败牌的牌面一样） */
+.quest .qf {
+  bottom: -8px; right: -12px; display: inline-flex; align-items: center; gap: 0; padding: 2px 3px;
+  color: #fff3ee; background: linear-gradient(180deg, #a3202e, #6e111c); box-shadow: 0 0 0 1px rgba(255, 190, 170, .55), 0 2px 3px rgba(0, 0, 0, .5);
+}
+.quest .qf .ic { width: max(9px, calc(var(--q) * .24)); height: max(9px, calc(var(--q) * .24)); margin: 0 -1px; vertical-align: 0; filter: none; }
+.quest .qf i { font: 700 9.5px/1 var(--num); font-style: normal; margin-left: 1px; }
 .quest.just { animation: seal-press .75s cubic-bezier(.2, 1.4, .4, 1) both; }
 @keyframes seal-press {
   0% { transform: scale(2) rotate(-25deg); opacity: 0; }
@@ -652,13 +662,9 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
    圆桌：桌面椭圆和座位环都由 app.js 按区域实际宽高算出
    （--cy 桌心高度、--ox/--oy 桌面半轴；座位沿更大的椭圆按弧长等距排开）
    ===================================================================== */
-/* 桌面椭圆和桌心文字的位置由 app.js 写进这些变量；注册成长度后，圆桌变大小时能平滑过渡 */
-@property --cy { syntax: "<length-percentage>"; inherits: true; initial-value: 50%; }
-@property --ox { syntax: "<length-percentage>"; inherits: true; initial-value: 34%; }
-@property --oy { syntax: "<length-percentage>"; inherits: true; initial-value: 36%; }
-@property --tc-y { syntax: "<length-percentage>"; inherits: true; initial-value: 50%; }
+/* 桌面椭圆和桌心文字的位置由 app.js 写进这些变量（一次写到终点）；
+   圆桌变大小时的平滑过渡由 app.js 在合成层上做（椭圆缩放、桌心平移、座位滑动），不给变量本身做过渡 */
 .table-wrap { position: relative; width: 100%; margin: 0 auto; flex: 0 0 auto; }
-.table-wrap.ring-ready { transition: --cy .3s cubic-bezier(.25, .8, .3, 1), --ox .3s cubic-bezier(.25, .8, .3, 1), --oy .3s cubic-bezier(.25, .8, .3, 1), --tc-y .3s cubic-bezier(.25, .8, .3, 1); }
 .table-wrap::before {
   content: ""; position: absolute; inset: -2% -4%; pointer-events: none;
   background: radial-gradient(50% 50% at 50% 50%, rgba(236, 180, 100, .13), transparent 70%);
@@ -715,6 +721,9 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .table-center .phase.evil-text, .table-center .win-evil { color: #ffbdb5; }
 .table-center .win-good { color: #c4d9fa; }
 .table-center .tc-line { color: var(--cream); text-wrap: balance; }
+/* “第1轮任务 · 第1次提名”折行时：上下两行、不要中间的点（app.js 的 fitCenter 量过才加 .stack） */
+.tp.stack .sep { display: none; }
+.tp.stack > .nw { display: block; }
 /* 矮的桌心：先省掉小标题，再省掉说明行（app.js 量过高度后加 .tight / .tighter） */
 .table-center.tight .tc-kicker, .table-center.tighter .tc-line { display: none; }
 .table-center .phase.tc-pick { font-size: 20px; letter-spacing: 3px; }
@@ -731,7 +740,11 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
   transform: translate(-50%, calc(var(--sh) * -.578));
   display: flex; flex-direction: column; align-items: center; text-align: center;
   transition: opacity .2s, filter .2s;
+  /* 座位块比盾牌宽：只让盾牌、名字和标记按钮接收点击，挤在一起时空白处和缎带不会抢走邻座的点击 */
+  pointer-events: none;
 }
+.seat .avatar, .seat .name, .seat .mark { pointer-events: auto; }
+@media (hover: hover) and (pointer: fine) { .seat .label { pointer-events: auto; } } /* 鼠标悬停能看到缎带的完整文字 */
 .avatar {
   position: relative; isolation: isolate; display: block; flex: 0 0 auto;
   width: var(--sh); height: calc(var(--sh) * 1.156);
@@ -881,7 +894,7 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 
 /* AI 思考：一卷小羊皮纸上的墨点 */
 .avatar .think {
-  position: absolute; top: calc(var(--sh) * -.2); left: calc(var(--sh) * -.42); z-index: 3; display: none; gap: 3px; align-items: center;
+  position: absolute; top: calc(var(--sh) * -.02); left: calc(var(--sh) * -.46); z-index: 3; display: none; gap: 3px; align-items: center;
   padding: 4px 6px; border-radius: 9px 9px 9px 2px;
   background: var(--parch-100); box-shadow: 0 0 0 1px var(--gold-deep), 0 2px 5px rgba(0, 0, 0, .55);
 }
@@ -907,7 +920,7 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
   border: 1px dashed rgba(236, 208, 138, .5); background: rgba(22, 13, 7, .7); color: var(--cream-2);
   box-shadow: none; font-weight: 500;
 }
-.mark::after { content: ""; position: absolute; inset: -8px -5px; }
+.mark::after { content: ""; position: absolute; inset: -3px -5px -8px; } /* 点击区域往下和两侧放大，不往上盖住座位号圆章 */
 .mark:hover:not(:disabled) { background: rgba(60, 40, 22, .85); }
 .mark[data-mark="good"] { border-style: solid; border-color: var(--royal-hi); color: #d4e3ff; background: rgba(31, 78, 140, .6); }
 .mark[data-mark="evil"] { border-style: solid; border-color: var(--crimson-hi); color: #ffd6d0; background: rgba(140, 24, 36, .6); }
@@ -1230,7 +1243,7 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
     0 20px 44px rgba(0, 0, 0, .55), inset 0 0 50px rgba(130, 85, 30, .25);
 }
 .log-head {
-  display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 52px;
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0 10px; min-height: 52px; min-width: 0;
   padding: 6px 14px 6px 18px; border-bottom: 1px solid rgba(138, 106, 36, .4);
   box-shadow: 0 1px 0 rgba(255, 250, 235, .6);
 }
@@ -1674,7 +1687,13 @@ body.show-thoughts .thought { display: flex; }
   border-color: var(--gold);
   background: radial-gradient(120% 120% at 50% 0%, rgba(236, 190, 100, .2), transparent 70%), linear-gradient(180deg, #3d2a1c, #2b1d13);
 }
+.hint-btn { position: relative; }
 .hint-btn [data-art] { display: inline-grid; }
+/* 关掉卷轴后才写好的提示：按钮右上角一颗红宝石，点一下就看 */
+.hint-btn.ready::after {
+  content: ""; position: absolute; top: -4px; right: -4px; width: 11px; height: 11px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ff9a9a, var(--crimson-hi)); box-shadow: 0 0 0 1.5px #2a180c, 0 0 8px rgba(212, 70, 75, .8);
+}
 .hint-btn .ic { width: 20px; height: 20px; }
 
 /* =====================================================================
@@ -1743,6 +1762,8 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
 .modal-body li { margin: 4px 0; }
 .modal-body li::marker { color: var(--gold-ink); font-weight: 700; }
 .modal-body p { margin: 7px 0; }
+/* 正文避免最后一行只剩一两个字（“……分不清谁是 / 谁。”） */
+.modal-body p, .modal-body li, .role-tx p, .ability, .identity .tip, .w-tip-t { text-wrap: pretty; }
 .modal-body b { color: var(--ink); }
 .modal-body code { font-size: .92em; padding: 0 5px; border-radius: 3px; background: rgba(138, 106, 36, .16); }
 .h3-note { font: 600 13px var(--sans); letter-spacing: 0; color: var(--ink-3); margin-left: 2px; }
@@ -1849,7 +1870,8 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
 .eb-seals .quest.fail { box-shadow: inset 0 0 0 3px rgba(0, 0, 0, .16), 0 0 0 1.5px #3e070e, 0 0 0 3px rgba(236, 208, 138, .8), 0 2px 5px rgba(0, 0, 0, .55); }
 /* 没打到的轮次：褪色的空火漆，数字仍然清楚 */
 .eb-seals .quest.unplayed { color: #3a2a1a; background: radial-gradient(circle at 36% 30%, #e2d6bd, #b3a184); box-shadow: 0 0 0 1.5px #24170e, 0 0 0 3px rgba(201, 162, 74, .4), 0 2px 4px rgba(0, 0, 0, .4); }
-.eb-seals .quest .qf { bottom: -8px; right: -12px; font-size: 9.5px; padding: 2px 4px; }
+.eb-seals .quest .qf { bottom: -8px; right: -12px; padding: 1px 3px; }
+.eb-seals .quest .qf .ic { width: 9px; height: 9px; }
 .eb-score {
   display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 13px; border-radius: 999px;
   font: 700 18px/1.5 var(--num); color: var(--ink); background: linear-gradient(180deg, #fffaf0, #ead9b0);
@@ -2281,6 +2303,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .ev { font-size: 17.5px; margin: 12px 0; }
   .say { font-size: 17.5px; }
   .ev-system { font-size: 15.5px; }
+  .ev-system.start { font-size: 16px; }
   .ev-divider { font-size: 18px; }
   .bubble .who { font-size: 14.5px; }
   .who .ws { font-size: 14px; }
@@ -2383,9 +2406,9 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
     box-shadow: inset 0 1px 0 rgba(201, 162, 74, .5), 0 -10px 30px rgba(0, 0, 0, .6);
   }
   .action-bar.your-turn { padding-top: 17px; box-shadow: inset 0 2px 0 var(--gold-hi), 0 -10px 30px rgba(0, 0, 0, .6); }
-  /* 吸底的行动栏不永久挡住内容：键盘聚焦 / 滚动定位到桌上和卡片里的东西时，让出行动栏的高度
-     （只加在内容上，不加在行动栏自己身上，否则点行动栏会把页面滚到底） */
-  .avatar, .mark, .identity, .identity .peek, .right, .log-head label { scroll-margin-bottom: calc(var(--dock-h, 0px) + 10px); }
+  /* 吸底的行动栏不永久挡住内容：滚动定位时让出的高度由 app.js 写进一条小样式规则 */
+  /* 座位滑动途中（比如横竖屏切换）不撑出横向滚动 */
+  .table-wrap { overflow-x: clip; }
   .w-tip { max-width: 100%; }
   /* 顶栏两行：品牌 + 按钮 / 任务火漆 + 否决宝石 */
   .topbar { flex-wrap: wrap; gap: 6px 10px; padding: 8px 12px 12px; }
@@ -2393,6 +2416,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .top-actions { margin-left: auto; }
   .table { --sh: 52px; --seat-w: 104px; --num-d: 22px; --num-f: 13px; --seat-up: 50px; --seat-down: 80px; --seat-side: 54px; --rim-gx: 50px; --rim-gy: 12px; aspect-ratio: 1.38 / 1; }
   .table.crowded { aspect-ratio: 1.22 / 1; }
+  .table.crowded .label .lb-x { display: none; }
   .setup-card { padding: 28px 28px 26px; }
 }
 
@@ -2471,6 +2495,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .seat .name small { display: none; }
   .labels { max-width: 90px; gap: 2px 3px; margin-top: 2px; }
   .label { font-size: 10.5px; line-height: 16px; padding: 0 7px; }
+  .label .lb-x { display: none; } /* “坏人（已亮明）”在窄桌上只写“坏人”，完整文字在提示里 */
   .mark { font-size: 10.5px; line-height: 15px; padding: 0 4px; }
   .plate { gap: 3px; }
   .avatar .think { padding: 3px 5px; }
@@ -2566,7 +2591,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
    单栏行动卡片：手机竖屏，以及矮的横屏（手机横过来、7 寸平板、矮的笔记本窗口）
    教练按钮收到右上角；按钮是整宽的拇指按钮
    ===================================================================== */
-@media (max-width: 560px), (orientation: landscape) and (max-height: 620px) and (min-width: 600px) {
+@media (max-width: 720px), (orientation: landscape) and (max-height: 620px) and (min-width: 600px) {
   .hint-btn { position: absolute; top: 9px; right: 10px; z-index: 3; min-height: 40px; padding: 4px 11px 4px 9px; gap: 4px; font-size: 13px; letter-spacing: 1px; }
   .hint-btn .ic { width: 17px; height: 17px; }
   .action-bar.your-turn .hint-btn { top: 23px; right: 17px; }
@@ -2635,9 +2660,20 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .panel .card-btn { min-height: 64px; }
   .panel .alert { margin-top: 5px; }
 }
-/* 小屏手机、9 人以上：桌子压扁一点，整圈座位能放进吸底行动栏上方 */
-@media (max-width: 560px) and (max-height: 760px) {
+/* 手机、9 人以上：桌子压扁一点，整圈座位能放进吸底行动栏上方 */
+@media (max-width: 560px) and (max-height: 940px) {
   .table.crowded { aspect-ratio: 1 / 1.3; }
+}
+/* 常见的大屏手机（761–940 高）、9 人以上：行动卡片也用矮屏的紧凑排法（“过 / 发言”竖排在输入框右边，
+   不再重复列出提名的队伍），升起时不挡住你的座位 */
+@media (max-width: 560px) and (min-height: 761px) and (max-height: 940px) {
+  #game.crowded .panel-speak { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "head head" "main side"; column-gap: 10px; }
+  #game.crowded .panel-speak .act-sub, #game.crowded .panel-vote .act-main { display: none; }
+  #game.crowded .panel-speak .act-side { flex-direction: column; flex-wrap: nowrap; align-items: stretch; align-self: end; gap: 7px; }
+  #game.crowded .panel-speak .act-side > button, #game.crowded .panel-speak button.pass { flex: 0 0 auto; width: 84px; min-height: 42px; padding: 6px 10px; }
+  #game.crowded .act-side.vote { flex-wrap: nowrap; }
+  #game.crowded .act-side.vote button { flex: 1 1 0; min-height: 48px; }
+  #game.crowded .panel .card-btn { min-height: 64px; }
 }
 
 /* =====================================================================
@@ -2658,10 +2694,11 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .tracks { order: 0; flex: 1 1 auto; width: auto; justify-content: center; gap: 18px; padding: 0; }
   .track-group .track-label { display: none; }
   .quest-track { --q: 34px; gap: 9px; }
-  .quest .two, .quest .qf { font-size: 9.5px; padding: 2px 4px; }
+  .quest .two { font-size: 9.5px; padding: 2px 3px; }
+  .quest .qf { padding: 1px 3px; }
   #usage { display: none; }
   .top-actions { margin-left: 0; gap: 6px; }
-  .top-btn { min-height: 38px; padding: 4px 10px 4px 8px; font-size: 13px; }
+  .top-btn { min-height: 40px; padding: 4px 10px 4px 8px; font-size: 13px; }
   .board { display: contents; }
   .left { grid-area: left; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 4px 12px 10px; gap: 10px; }
   .table-wrap { flex: 0 0 100%; min-height: 0; }
@@ -2671,7 +2708,12 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
     --sh: 46px; --seat-w: 96px; --num-d: 20px; --num-f: 12px; --seat-up: 44px; --seat-down: 72px;
     --seat-side: 48px; --info-w: 88px; --rim-gx: 44px; --rim-gy: 10px; --ring-aspect: 2.2;
   }
-  .right { grid-area: log; max-height: none; min-height: 0; margin: 2px 12px 12px 8px; }
+  .right { grid-area: log; max-height: none; min-height: 0; min-width: 0; margin: 2px 12px 12px 8px; }
+  /* 记录头：标题收紧，开关只写“AI 内心独白”，再挤也只会折到第二行，不把页面撑出横向滚动 */
+  .log-head { padding: 4px 8px 4px 12px; min-height: 46px; }
+  .log-title { font-size: 16px; letter-spacing: 2px; gap: 7px; }
+  .tswitch { gap: 7px; font-size: 12.5px; min-width: 0; }
+  .ts-long { display: none; }
   .action-bar {
     grid-area: dock; position: relative; bottom: auto; z-index: 4; margin: 8px 12px 8px 8px; padding: 8px; border: 0; border-radius: 6px;
     box-shadow: inset 0 0 0 1px rgba(201, 162, 74, .4), 0 6px 18px rgba(0, 0, 0, .4);
@@ -2701,6 +2743,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .seat .name { font-size: 11.5px; padding: 0 5px; line-height: 1.45; }
   .seat .name small { display: none; }
   .label { font-size: 10px; line-height: 15px; padding: 0 7px; }
+  .label .lb-x { display: none; }
   .mark { font-size: 10px; line-height: 14px; padding: 0 4px; }
   .labels { margin-top: 1px; }
   .table-center { font-size: 11.5px; line-height: 1.4; }
@@ -2716,6 +2759,16 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .qcard { --cw: 42px; }
   .mo.compact .qcard { --cw: 34px; }
   .rv-card { width: 236px; }
+  /* 9 人以上：三百多像素见方的桌子要坐下十个人——盾牌、名牌、缎带再小一号，
+     两侧上下相邻的座位（缎带对盾牌）、王冠和邻座名牌都不再叠在一起 */
+  .table.crowded { --sh: 32px; --seat-w: 72px; --num-d: 15px; --num-f: 9.5px; --seat-up: 30px; --seat-down: 48px; --seat-side: 37px; --info-w: 70px; --rim-gx: 30px; --rim-gy: 6px; }
+  .table.crowded .plate { margin-top: calc(var(--num-d) * .5 - var(--sh) * .116 + 2px); }
+  .table.crowded .seat .name { font-size: 10.5px; line-height: 1.35; padding: 0 4px; }
+  .table.crowded .mark { font-size: 9.5px; line-height: 12px; padding: 0 3px; }
+  .table.crowded .label { font-size: 9.5px; line-height: 13px; padding: 0 6px; }
+  .table.crowded .labels { margin-top: 1px; }
+  .table.crowded .avatar .think { padding: 2px 4px; gap: 2px; left: calc(var(--sh) * -.56); }
+  .table.crowded .avatar .think i { width: 4px; height: 4px; }
 }
 
 /* 小屏手机：火漆和宝石再收紧一点，一行放得下 */
@@ -2725,19 +2778,25 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .top-btn { padding: 4px 9px 4px 7px; gap: 4px; font-size: 13px; }
   .tracks { padding: 2px 0 0; gap: 8px; }
   .quest-track { --q: 34px; gap: 8px; }
-  .quest .two, .quest .qf { font-size: 9.5px; padding: 2px 4px; }
-  .quest .two { right: -11px; }
+  .quest .two { font-size: 9.5px; padding: 2px 3px; }
+  .quest .qf { padding: 1px 3px; }
   .reject-wrap { gap: 5px; }
   .reject-track { gap: 5px; }
   .reject-track i { width: 9px; height: 9px; }
   .track-label { font-size: 11px; letter-spacing: 1px; }
+  /* 10 人桌：票型往盾牌里收一点、王冠压低一点、缎带字收紧一点，少压到邻座的缎带和名牌 */
+  .table.crowded .vote-chip { right: calc(var(--sh) * -.12); }
+  .table.crowded .crown { top: calc(var(--sh) * -.31); width: calc(var(--sh) * .5); height: calc(var(--sh) * .38); }
+  .table.crowded .label { font-size: 10px; padding: 0 5px; letter-spacing: -.2px; }
 }
 
 /* 触屏：按钮至少 40px 高；标记按钮视觉小，但点击区域靠 ::after 放大 */
 @media (pointer: coarse) {
   button { min-height: 40px; }
   .mark { min-height: 0; }
-  .mark::after { inset: -12px -6px; }
+  .mark::after { inset: -3px -6px -12px; }
+  /* 触屏：盾牌四周的小徽记（王冠、票型、墨点）只是装饰，挤在一起时不替邻座接住点击 */
+  .avatar .crown, .avatar .lady, .avatar .vote-chip, .avatar .think, .avatar .badge { pointer-events: none; }
   .panel .quick button { min-height: 40px; }
   .identity .peek { min-height: 40px; }
   .pill-radio span { min-height: 42px; }
