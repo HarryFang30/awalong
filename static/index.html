@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>阿瓦隆练习场</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗡️</text></svg>">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- ============ 开局设置 ============ -->
+  <section id="setup" class="screen">
+    <div class="setup-card">
+      <h1>阿瓦隆 <span class="sub">单人练习场</span></h1>
+      <p class="tagline">你 + 一桌由 DeepSeek 扮演的 AI 玩家。玩得开心，顺便练练读人。</p>
+
+      <form id="setup-form" autocomplete="off">
+        <div class="grid">
+          <label>人数
+            <select name="num_players" id="f-num">
+              <option value="5">5 人</option>
+              <option value="6">6 人</option>
+              <option value="7" selected>7 人</option>
+              <option value="8">8 人</option>
+              <option value="9">9 人</option>
+              <option value="10">10 人</option>
+            </select>
+          </label>
+          <label>你的昵称
+            <input name="name" id="f-name" maxlength="12" placeholder="玩家">
+          </label>
+          <label>你的座位
+            <select name="seat" id="f-seat"></select>
+          </label>
+          <label>你的角色
+            <select name="role" id="f-role"></select>
+          </label>
+          <label>AI 发言长度
+            <select name="speech_len" id="f-len">
+              <option value="50">简短</option>
+              <option value="80" selected>适中</option>
+              <option value="130">详细</option>
+            </select>
+          </label>
+          <label class="check">
+            <input type="checkbox" name="lady" id="f-lady"> 湖中仙女 <small>（推荐 7 人以上）</small>
+          </label>
+        </div>
+        <div class="roles-preview" id="roles-preview"></div>
+
+        <fieldset class="ai-box">
+          <legend>AI 玩家</legend>
+          <div class="mode-row">
+            <label class="radio"><input type="radio" name="mode" value="llm" checked> DeepSeek（推荐）</label>
+            <label class="radio"><input type="radio" name="mode" value="offline"> 离线规则 AI（免费，较笨）</label>
+          </div>
+          <div id="llm-fields">
+            <p class="muted" id="server-key-note" hidden>服务器已从 .env 读取了 API Key，这里可以留空。</p>
+            <label>DeepSeek API Key
+              <div class="key-row">
+                <input type="password" name="api_key" id="f-key" placeholder="sk-...">
+                <button type="button" id="btn-check" class="ghost">测试连接</button>
+              </div>
+            </label>
+            <label>模型
+              <input name="model" id="f-model" placeholder="deepseek-chat">
+            </label>
+            <p class="muted small" id="check-result"></p>
+            <p class="muted small">Key 只保存在你的浏览器和本机服务里，直接发送给 DeepSeek。</p>
+          </div>
+        </fieldset>
+
+        <p class="error" id="setup-error"></p>
+        <button type="submit" class="primary big" id="btn-start">开始游戏</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============ 对局 ============ -->
+  <section id="game" class="screen hidden">
+    <header class="topbar">
+      <div class="brand">阿瓦隆</div>
+      <div class="tracks">
+        <div id="quest-track" class="quest-track"></div>
+        <div class="reject-wrap" title="本轮连续否决次数，到 5 次坏人直接获胜">
+          <span class="muted small">否决</span>
+          <div id="reject-track" class="reject-track"></div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span id="usage" class="muted small"></span>
+        <button id="btn-rules" class="ghost">规则</button>
+        <button id="btn-new" class="ghost">新游戏</button>
+      </div>
+    </header>
+
+    <main class="board">
+      <div class="left">
+        <div class="table-wrap">
+          <div id="table" class="table">
+            <div class="table-center" id="table-center"></div>
+          </div>
+        </div>
+        <div id="identity" class="identity"></div>
+      </div>
+      <div class="right">
+        <div class="log-head">
+          <span>对局记录</span>
+          <label class="check small" id="thoughts-toggle" hidden>
+            <input type="checkbox" id="show-thoughts"> 显示 AI 内心独白
+          </label>
+        </div>
+        <div id="log" class="log"></div>
+      </div>
+    </main>
+
+    <footer class="action-bar">
+      <div id="action" class="action"></div>
+      <button id="btn-hint" class="hint-btn" title="让教练根据你能看到的信息给出建议">💡 教练</button>
+    </footer>
+  </section>
+
+  <dialog id="modal">
+    <div class="modal-head">
+      <h2 id="modal-title"></h2>
+      <button class="ghost" id="modal-close" aria-label="关闭">✕</button>
+    </div>
+    <div id="modal-body" class="modal-body"></div>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
