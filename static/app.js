@@ -23,8 +23,12 @@ const S = {
   ended: false,
   endShown: false,
   selected: [],
+  lastPick: 0,          // 最近点选的座位（行动栏里只给它播放放入动画）
+  busy: false,          // 正在提交行动
   pendingKey: null,
   marks: {},
+  tipN: undefined,      // 等待时的小贴士序号
+  tipTimer: null,
   pollTimer: null,
   covered: false,
   live: false,          // 首次拉取之后才算“实时”，只有实时的新事件才播放动画
@@ -312,6 +316,7 @@ async function startGame(e) {
 
 function showSetup(message = "") {
   clearTimeout(S.pollTimer);
+  stopTips();
   S.gameId = null;
   forget("avalon.game");
   resetFx();
@@ -330,8 +335,9 @@ function enterGame(id, fresh = false) {
   resetFx();
   Object.assign(S, {
     gameId: id, g: null, events: [], lastId: 0, ended: false, endShown: false,
-    selected: [], pendingKey: null, covered: false, live: false, revealFresh: fresh,
+    selected: [], lastPick: 0, busy: false, pendingKey: null, covered: false, live: false, revealFresh: fresh,
   });
+  stopTips();
   try { S.marks = JSON.parse(load("avalon.marks." + id) || "{}"); } catch { S.marks = {}; }
   store("avalon.game", id);
   $("#log").innerHTML = "";
@@ -339,6 +345,7 @@ function enterGame(id, fresh = false) {
   for (const sel of ["#action", "#quest-track", "#reject-track", "#table-center", "#identity"]) {
     const el = $(sel);
     el._h = null;
+    el._mode = null;
     el.innerHTML = "";
   }
   document.body.classList.remove("show-thoughts");
@@ -566,6 +573,8 @@ function placeSeats() {
   renderTable(); // 横排/竖排可能变了，连同位置一起更新
 }
 if (window.ResizeObserver) new ResizeObserver(placeSeats).observe($("#table"));
+// 左栏只允许竖向滚动：键盘聚焦 / scrollIntoView 到桌边的座位时，浏览器可能把它横向滚开一截
+$(".left").addEventListener("scroll", (e) => { if (e.target.scrollLeft) e.target.scrollLeft = 0; }, { passive: true });
 
 function labelClass(text) {
   if (/坏/.test(text)) return "evil";
@@ -857,95 +866,114 @@ document.addEventListener("keydown", (e) => {
 }, true);
 
 // =====================================================================
-// 行动栏
+// 行动栏：轮到你时呈上一张羊皮纸卡片（深红缎带“轮到你了”）
+//   左：印章 + 标题 + 一句规则提醒；中：发言 / 提名的队伍；右：已选队员位 + 按钮
+// 等待时收成一行：谁在思考（纹章 + 墨点）+ 定时轮换的练习小贴士
 // =====================================================================
 function attemptWarn() {
   const a = S.g.attempt;
-  if (a >= 5) return `<div class="alert danger">${ic("warn")}本轮第5次提名：再被否决坏人直接获胜！</div>`;
-  if (a === 4) return `<div class="alert">${ic("warn")}注意：本轮已经否决3次了。</div>`;
+  if (a >= 5) return `<div class="alert danger">${ic("warn")}<span>第5次提名：再被否决，坏人直接获胜！</span></div>`;
+  if (a === 4) return `<div class="alert">${ic("warn")}<span>已否决3次：连续5次否决，坏人直接获胜</span></div>`;
   return "";
 }
 
-const QUICK = ["这车我同意。", "这车我反对。", "我是好人，相信我。", "我觉得车上有问题。", "先过，听后面的。"];
+// 快捷短语：按钮上是短标签，点一下把整句放进发言框
+const QUICK = [["同意这车", "这车我同意。"], ["反对这车", "这车我反对。"], ["我是好人", "我是好人，相信我。"], ["车上有问题", "我觉得车上有问题。"], ["先听后面的", "先过，听后面的。"]];
+// 有实体键盘的桌面才提示 Ctrl+Enter；手机上占位文字保持一行
+const FINE_POINTER = window.matchMedia("(hover: hover) and (pointer: fine)");
+const ph = (text) => esc(text + (FINE_POINTER.matches && !NARROW.matches ? "（Ctrl+Enter 提交）" : ""));
+const speechBox = (text) => `<textarea id="act-speech" rows="2" maxlength="500" placeholder="${ph(text)}"></textarea>`;
+
+// 卡片头：缎带 + 印章 + 标题 + 规则提醒（seal：gold / lady / evil）
+const head = (icon, title, sub, extra = "", seal = "gold") => `
+    <span class="turn-tag" aria-hidden="true">轮到你了</span>
+    <div class="act-head"><span class="act-seal seal-${seal}" aria-hidden="true">${ic(icon)}</span>
+      <div class="act-titles"><div class="act-title">${title}</div>${sub ? `<div class="act-sub">${sub}</div>` : ""}${extra}</div></div>`;
+
+// 已选：迷你纹章 + 虚线空位 + n/N（内容由 updateSelectionUI 填）
+const pick = () => `<div class="pick"><span class="pick-k">已选</span><span class="slots" id="sel-slots"></span><span class="cnt" id="sel-cnt"></span>` +
+  `<span class="sr-only" aria-live="polite">已选 <span id="sel-list">无</span></span></div>`;
+
+// 一排迷你纹章：提名的队伍 / 可选的人
+function teamLine(seats, label, names = true) {
+  const list = sortSeats(seats || []);
+  const people = list.map((s) => {
+    const me = player(s)?.is_human;
+    const who = names ? (me ? "（你）" : ` ${esc(nameOf(s))}`) : (me ? "（你）" : "");
+    return `<span class="tl-p${me ? " me" : ""}" title="${s}号 ${esc(nameOf(s))}">${seatEmblem(s, "xs")}<span>${s}号${who}</span></span>`;
+  }).join("");
+  return `<div class="team-line"><span class="tl-k">${label}</span><span class="tl-v">${people}</span></div>`;
+}
 
 const PANELS = {
-  propose: (p) => `
-    <div class="act-title">${ic("crown")}<span>你是队长：在圆桌上点选 <span class="em">${p.size}</span> 名队员</span><span class="sub">（可以选自己）</span></div>
-    ${attemptWarn()}
-    <div class="compose">
-      <textarea id="act-speech" rows="2" maxlength="500" placeholder="说说你的组队理由（可选，Ctrl+Enter 提交）"></textarea>
-      <div class="act-row"><span class="sel">已选 <b id="sel-list">无</b></span><span class="spacer"></span>
-        <button class="primary" id="act-submit" disabled>确认发车</button></div>
-    </div>`,
-  speak: (p) => `
-    <div class="act-head">
-      <div class="act-title">${ic("quill")}<span>轮到你发言</span><span class="sub">队长 ${S.g.leader}号 提名</span>${seatChips(p.team)}</div>
-      <div class="quick">${QUICK.map((q) => `<button type="button" data-quick="${esc(q)}">${esc(q)}</button>`).join("")}</div>
+  propose: (p) => {
+    const q = S.g.quests[S.g.quest_index];
+    return `${head("crown", `你是队长：组建 <span class="em">${p.size}</span> 人队伍`,
+      `在圆桌上点选 ${p.size} 人 · 可以选自己${q && q.fails_needed === 2 ? " · 本轮需2张失败" : ""}`, attemptWarn())}
+    <div class="act-main">${speechBox("说说组队理由（可选）")}</div>
+    <div class="act-side with-pick">${pick()}<button class="primary" id="act-submit" disabled>${ic("swords")}<span>确认发车</span></button></div>`;
+  },
+  speak: (p) => `${head("quill", "轮到你发言", `<span class="tl-long">队长 ${S.g.leader}号 </span>提名 ${seatChips(p.team)}`)}
+    <div class="act-main">
+      <div class="quick" role="group" aria-label="快捷短语">${QUICK.map(([k, q]) => `<button type="button" data-quick="${esc(q)}" title="${esc(q)}">${esc(k)}</button>`).join("")}</div>
+      ${speechBox("你的发言，所有人都会听到")}
     </div>
-    <div class="compose">
-      <textarea id="act-speech" rows="2" maxlength="500" placeholder="你的发言（Ctrl+Enter 提交）"></textarea>
-      <div class="act-row"><span class="spacer"></span>
-        <button class="ghost" id="act-pass">过</button>
-        <button class="primary" id="act-submit">发言</button></div>
+    <div class="act-side"><button class="ghost pass" id="act-pass">过</button><button class="primary" id="act-submit">${ic("quill")}<span>发言</span></button></div>`,
+  vote: (p) => `${head("ballot", "投票：这支队伍能出发吗？", `赞成票过半（至少 ${Math.floor(S.g.n / 2) + 1} 票）才发车`, attemptWarn())}
+    <div class="act-main">${teamLine(p.team, `<span class="tl-long">队长 ${S.g.leader}号 </span>提名`)}</div>
+    <div class="act-side vote"><button class="yes" data-vote="1">${ic("check")}<span>赞成</span></button><button class="no" data-vote="0">${ic("cross")}<span>反对</span></button></div>`,
+  quest: (p) => `${head("swords", "你在任务队伍中：秘密出牌", p.fails_needed === 2 ? "本轮需要2张失败才失败" : "只要出现1张失败，任务就失败")}
+    <div class="act-main">${teamLine(p.team, "同车")}<p class="act-note">出牌不记名，只公布失败牌的张数${p.can_fail ? "" : "；好人只能出成功"}</p></div>
+    <div class="act-side cards">
+      <button class="card-btn ok" data-card="success">${ic("chalice")}<span>成功</span></button>
+      <button class="card-btn bad" data-card="fail" ${p.can_fail ? "" : 'disabled title="好人只能出成功"'}>${ic(p.can_fail ? "dagger" : "lock")}<span>失败</span>${p.can_fail ? "" : "<small>好人不能出</small>"}</button>
     </div>`,
-  vote: (p) => `
-    <div class="act-title">${ic("ballot")}<span>投票</span><span class="sub">队长 ${S.g.leader}号 提名</span>${seatChips(p.team)}</div>
-    ${attemptWarn()}
-    <div class="act-buttons">
-      <button class="good" data-vote="1">${ic("check")}<span>赞成</span></button>
-      <button class="evil" data-vote="0">${ic("cross")}<span>反对</span></button>
-    </div>`,
-  quest: (p) => `
-    <div class="act-title">${ic("swords")}<span>你在任务队伍中，请秘密出牌</span>${p.fails_needed === 2 ? '<span class="sub">（本轮需要2张失败才失败）</span>' : ""}</div>
-    <div class="act-buttons cards">
-      <button class="good card-btn" data-card="success">${ic("chalice")}<span>成功</span></button>
-      <button class="evil card-btn" data-card="fail" ${p.can_fail ? "" : 'disabled title="好人只能出成功"'}>${ic("dagger")}<span>失败</span></button>
-      ${p.can_fail ? "" : '<p class="note">好人只能出成功。</p>'}
-    </div>`,
-  lady_choose: (p) => `
-    <div class="act-title">${ic("waves")}<span>湖中仙女：选择一名玩家查验阵营</span><span class="sub">可选：${seatsText(p.candidates)}</span></div>
-    <div class="act-row"><span class="sel">已选 <b id="sel-list">无</b></span><span class="spacer"></span>
-      <button class="primary" id="act-submit" disabled>查验</button></div>`,
-  lady_announce: (p) => `
-    <div class="act-title">${ic("waves")}<span>查验结果（只有你知道）：${p.target}号是</span>
-      <span class="label ${p.result}">${TEAM_NAME[p.result]}</span></div>
-    <div class="claim-row"><span class="claim-k">公开宣布</span>
-      <label class="pill-radio"><input type="radio" name="claim" value="good" ${p.result === "good" ? "checked" : ""}><span>好人</span></label>
-      <label class="pill-radio"><input type="radio" name="claim" value="evil" ${p.result === "evil" ? "checked" : ""}><span>坏人</span></label>
-      <label class="pill-radio"><input type="radio" name="claim" value="none"><span>不公布</span></label>
+  lady_choose: (p) => `${head("waves", "湖中仙女：查验一名玩家", "在圆桌上点选 · 只有你会看到TA的真实阵营", "", "lady")}
+    <div class="act-main">${teamLine(p.candidates, "可查验", false)}</div>
+    <div class="act-side with-pick">${pick()}<button class="primary" id="act-submit" disabled>${ic("eye")}<span>查验</span></button></div>`,
+  lady_announce: (p) => `${head("waves", `查验结果：${p.target}号是 <span class="label ${p.result}">${TEAM_NAME[p.result]}</span>`, "只有你看到真实结果，公布时可以撒谎", "", "lady")}
+    <div class="act-main">
+      <div class="claim-row" role="radiogroup" aria-label="公开宣布"><span class="claim-k">公开宣布</span>
+        <label class="pill-radio good"><input type="radio" name="claim" value="good" ${p.result === "good" ? "checked" : ""}><span>是好人</span></label>
+        <label class="pill-radio evil"><input type="radio" name="claim" value="evil" ${p.result === "evil" ? "checked" : ""}><span>是坏人</span></label>
+        <label class="pill-radio"><input type="radio" name="claim" value="none"><span>不公布</span></label>
+      </div>
+      ${speechBox("说点什么（可以撒谎）")}
     </div>
-    <div class="compose">
-      <textarea id="act-speech" rows="2" maxlength="500" placeholder="说点什么（可以撒谎）"></textarea>
-      <div class="act-row"><span class="spacer"></span><button class="primary" id="act-submit">公布</button></div>
-    </div>`,
-  assassin_suggest: (p) => `
-    <div class="act-title">${ic("dagger")}<span>刺杀讨论：你觉得谁是梅林？点选一人告诉刺客</span><span class="sub">可选：${seatsText(p.candidates)}</span></div>
-    <div class="compose">
-      <textarea id="act-speech" rows="2" maxlength="500" placeholder="说说你的理由"></textarea>
-      <div class="act-row"><span class="sel">已选 <b id="sel-list">无</b></span><span class="spacer"></span>
-        <button class="primary" id="act-submit" disabled>提出建议</button></div>
-    </div>`,
-  assassinate: (p) => `
-    <div class="act-title">${ic("dagger")}<span>你是刺客：刺中梅林就能翻盘！点选刺杀目标</span><span class="sub">可选：${seatsText(p.candidates)}</span></div>
-    <div class="compose">
-      <textarea id="act-speech" rows="2" maxlength="500" placeholder="刺杀前想说的话（可选）"></textarea>
-      <div class="act-row"><span class="sel">已选 <b id="sel-list">无</b></span><span class="spacer"></span>
-        <button class="evil" id="act-submit" disabled>刺杀！</button></div>
-    </div>`,
+    <div class="act-side"><button class="primary" id="act-submit">${ic("horn")}<span>公布</span></button></div>`,
+  assassin_suggest: (p) => `${head("dagger", "刺杀讨论：谁是梅林？", "在圆桌上点选一人 · 建议会告诉刺客，由刺客拍板", "", "evil")}
+    <div class="act-main">${speechBox("说说你的理由")}</div>
+    <div class="act-side with-pick">${pick()}<button class="primary" id="act-submit" disabled>${ic("dagger")}<span>提出建议</span></button></div>`,
+  assassinate: (p) => `${head("dagger", "你是刺客：最后一击", "刺中梅林，坏人翻盘 · 在圆桌上点选目标", "", "evil")}
+    <div class="act-main">${speechBox("刺杀前想说的话（可选）")}</div>
+    <div class="act-side with-pick">${pick()}<button class="evil" id="act-submit" disabled>${ic("dagger")}<span>刺杀！</span></button></div>`,
 };
 
-function setAction(html) {
+function setAction(html, mode = null) {
   const box = $("#action");
   box.innerHTML = html;
   box._h = html;
+  box._mode = mode;
+  if (mode !== "wait") stopTips();
+}
+// 结束 / 出错这类整块内容：只有变化时才重写
+function setActionIfChanged(html) {
+  const box = $("#action");
+  if (box._mode === "wait") box._h = null;
+  box._mode = null;
+  stopTips();
+  return patch(box, html);
 }
 
 function renderAction() {
   const g = S.g;
   const box = $("#action");
-  $("#btn-hint").disabled = g.status !== "running" || g.spectator;
+  const bar = $(".action-bar");
+  const noHint = g.status !== "running" || g.spectator;
+  setAttr($("#btn-hint"), "disabled", noHint ? "" : null);
   const p = g.pending;
-  $(".action-bar").classList.toggle("your-turn", !!p);
+  bar.classList.toggle("your-turn", !!p);
+  bar.classList.toggle("no-hint", noHint);
   const title = p ? "【轮到你】阿瓦隆练习场" : "阿瓦隆练习场";
   if (document.title !== title) document.title = title;
   if (p) {
@@ -953,73 +981,187 @@ function renderAction() {
     if (S.pendingKey !== key) {
       S.pendingKey = key;
       S.selected = [];
-      setAction(`<div class="panel panel-${p.type}">${PANELS[p.type] ? PANELS[p.type](p) : ""}</div>`);
+      S.lastPick = 0;
+      // 只有“刚刚轮到你”才闪一下金光；刷新恢复时不播放
+      const fresh = S.live || S.revealFresh;
+      setAction(`<div class="panel panel-${p.type}${fresh ? " enter" : ""}" role="group" aria-label="轮到你了">${PANELS[p.type] ? PANELS[p.type](p) : ""}</div>`);
       bindAction(p);
       renderTable();
       const ta = $("#act-speech");
-      if (ta && DESKTOP.matches) ta.focus();
+      if (ta && DESKTOP.matches) ta.focus({ preventScroll: true });
     }
     updateSelectionUI();
     return;
   }
   S.pendingKey = null;
   if (g.status === "ended") {
-    const html = `<div class="act-row end-row">
-      <span class="act-title end-title win-${g.winner}">${ic(g.winner === "good" ? "chalice" : "dagger")}<span>${g.winner === "good" ? "好人" : "坏人"}阵营获胜</span></span><span class="spacer"></span>
-      <button class="ghost" id="act-summary">结算</button>
-      <button class="primary" id="act-again">再来一局</button></div>`;
-    if (patch(box, html)) {
+    const me = g.you;
+    const verdict = me ? (me.team === g.winner ? "你赢了" : "这局输了") : "观战结束";
+    const html = `<div class="end-row win-${g.winner}">
+      <span class="end-seal" aria-hidden="true">${ic(g.winner === "good" ? "chalice" : "dagger")}</span>
+      <div class="end-text"><b class="end-title">${g.winner === "good" ? "好人" : "坏人"}阵营获胜<small>${verdict}</small></b><span class="end-sub">${esc(g.end_reason)}</span></div>
+      <div class="end-btns"><button class="ghost" id="act-summary">${ic("scroll")}<span>结算</span></button>
+        <button class="primary" id="act-again">${ic("restart")}<span>再来一局</span></button></div></div>`;
+    if (setActionIfChanged(html)) {
       $("#act-summary").onclick = showEndModal;
       $("#act-again").onclick = () => showSetup();
     }
     return;
   }
   if (g.status === "error" || g.status === "cancelled") {
-    const html = `<div class="act-row end-row"><span class="act-msg">${g.status === "error" ? "对局出错：" + esc(g.error) : "对局已停止"}</span>
-      <span class="spacer"></span><button class="primary" id="act-again">新游戏</button></div>`;
-    if (patch(box, html)) $("#act-again").onclick = () => showSetup();
+    const err = g.status === "error";
+    const html = `<div class="end-row stopped">
+      <span class="end-seal" aria-hidden="true">${ic(err ? "warn" : "scroll")}</span>
+      <div class="end-text"><b class="end-title">${err ? "对局出错了" : "对局已停止"}</b>${err ? `<span class="end-sub">${esc(g.error)}</span>` : ""}</div>
+      <div class="end-btns"><button class="primary" id="act-again">${ic("restart")}<span>新游戏</span></button></div></div>`;
+    if (setActionIfChanged(html)) $("#act-again").onclick = () => showSetup();
     return;
   }
-  patch(box, `<div class="waiting"><span class="quill">${ic("quill")}</span><span class="wt">${waitingText()}</span><span class="dots" aria-hidden="true"></span></div>`);
+  showWaiting(waitingHtml());
 }
 
-function waitingText() {
+// ---------- 等待：谁在思考 + 练习小贴士 ----------
+// 骨架只建一次；之后只改“谁在思考”那一段（没变化就不碰 DOM），小贴士按定时器轮换
+function showWaiting(who) {
+  const box = $("#action");
+  if (box._mode !== "wait") {
+    setAction(`<div class="waiting">
+      <span class="w-ink" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="w-who" role="status"></span>
+      <span class="w-tip"></span></div>`, "wait");
+    startTips();
+  }
+  patch(box.querySelector(".w-who"), who);
+}
+
+const THINK_VERB = {
+  propose: "正在挑选队员", discuss: "正在发言", vote: "正在投票", quest: "正在出牌",
+  lady: "正在使用湖中仙女", assassinate: "正在讨论谁是梅林",
+};
+function waitingHtml() {
   const g = S.g;
-  const t = g.thinking;
-  if (g.phase === "vote") return "等待其他玩家投票";
-  if (g.phase === "quest") return "任务进行中，等待队员出牌";
-  if (!t.length) return "请稍候";
-  return t.map((s) => seatChip(s, `「${esc(nameOf(s))}」`)).join("") + `<span>${g.phase === "propose" ? "正在组队" : "正在思考"}</span>`;
+  const t = g.thinking.filter((s) => !player(s)?.is_human);
+  const verb = THINK_VERB[g.phase] || "正在思考";
+  if (t.length && t.length <= 2) {
+    return t.map((s) => `<span class="w-p">${seatEmblem(s, "sm")}<b>${s}号「${esc(nameOf(s))}」</b></span>`).join("") +
+      `<span class="w-v">${verb}</span>`;
+  }
+  if (t.length > 2) {
+    return `<span class="w-ps">${t.slice(0, 5).map((s) => seatEmblem(s, "sm")).join("")}</span><span class="w-v"><b>${t.length} 位玩家</b>${verb}</span>`;
+  }
+  if (g.phase === "quest") {
+    return `${g.proposal ? `<span class="w-ps">${sortSeats(g.proposal).map((s) => seatEmblem(s, "sm")).join("")}</span>` : ""}<span class="w-v">任务进行中，等待队员出牌</span>`;
+  }
+  const idle = {
+    propose: `队长 ${g.leader}号 正在挑选队员`, discuss: "等待下一位玩家发言", vote: "等待投票结果",
+    lady: "湖中仙女查验中", assassinate: "坏人正在讨论谁是梅林",
+  }[g.phase] || "请稍候";
+  return `<span class="w-v">${idle}</span>`;
 }
 
+// 练习小贴士：每 9 秒换一句（只由定时器驱动，轮询不会让它闪动）
+const TIP_MS = 9000;
+const TIPS = [
+  "趁 AI 思考，点座位下的「标记」记下你的判断，结算时看看猜对几个。",
+  "留意谁总在替同一个人说话——坏人常常互相掩护。",
+  "反对“干净车”的人值得多看一眼。",
+  "任务失败后，回看车上的人和投赞成票的人。",
+  "第5次提名还投反对的人，嫌疑很大。",
+  "当梅林时别让票型太准，刺客会从票型里找你。",
+  "说法前后矛盾、跟着别人改口的人，往往在隐藏什么。",
+  "队长挑人时，看他“避开了谁”也很有信息量。",
+  "拿不准的时候，点「教练」：它只用你能看到的信息给建议。",
+];
+const PHASE_TIPS = {
+  propose: ["组队时优先带被任务结果证明过的人，少带刚出过失败车上的人。", "队长的提名本身就是信息：坏人当队长时，常把队友悄悄塞上车。"],
+  discuss: ["听发言时留意：谁在替谁辩护？坏人之间常常互相打掩护。", "第一个跳出来强烈反对“干净车”的人，值得记一笔。"],
+  vote: ["票型是公开信息：任务失败后，回头看看谁给那辆车投了赞成。", "坏人往往支持有队友在的车，反对全是好人的车。"],
+  quest: ["只有1张失败时，车上至少有1个坏人；没有失败也不代表车上全是好人。", "坏人有时会故意出成功来“洗白”，留意后面几轮的表现。"],
+  lady: ["湖中仙女的持有者可以撒谎——听宣布时要结合TA自己的立场。"],
+  assassinate: ["刺客会找“票型最准、总能避开坏人”的人——这就是梅林要藏的原因。", "梅林的破绽往往在早期：谁一开始就精准地反对了坏人车？"],
+};
+// 观战：没有标记、没有教练，讲“看什么”
+const WATCH_TIPS = [
+  "对照每个人的发言和内心独白，看看谁在演。",
+  "看梅林怎么藏：明明知道坏人是谁，却不能表现得太准。",
+  "看坏人怎么配合：谁在替队友说话，谁故意投了反对？",
+  "好人赢下3轮后，刺客会从票型里找梅林——提前猜猜他会刺谁。",
+  "任务失败时，看看是哪个坏人出的失败，他为什么敢出。",
+  "派西维尔能看到梅林和莫甘娜，但分不清谁是谁——看他怎么分辨。",
+  "试着在投票前预测每个人的票，再和结果对照。",
+];
+function tipText() {
+  const g = S.g;
+  if (g.spectator) return WATCH_TIPS[S.tipN % WATCH_TIPS.length];
+  const phaseList = PHASE_TIPS[g.phase] || [];
+  const pool = S.tipN % 2 && phaseList.length ? phaseList : TIPS;
+  return pool[Math.floor(S.tipN / 2) % pool.length];
+}
+function showTip(fresh) {
+  const el = $("#action .w-tip");
+  if (!el || !S.g) { stopTips(); return; }
+  patch(el, `<span class="w-tip-k">${ic("candle")}<span>小贴士</span></span><span class="w-tip-t${fresh ? " in" : ""}">${esc(tipText())}</span>`);
+}
+function startTips() {
+  stopTips();
+  if (S.tipN === undefined) S.tipN = Math.floor(Math.random() * 1000);
+  S.tipN++;
+  showTip(false);
+  S.tipTimer = setInterval(() => { S.tipN++; showTip(!reduceMotion()); }, TIP_MS);
+}
+function stopTips() {
+  clearInterval(S.tipTimer);
+  S.tipTimer = null;
+}
+
+// ---------- 选人：已选队员位 + 计数 + 按钮 ----------
 function updateSelectionUI() {
   const p = S.g.pending;
+  if (!p) return;
+  const sel = selection();
+  const need = sel ? sel.max : 0;
   const list = $("#sel-list");
   if (list) {
     const text = seatsText(S.selected);
     if (list.textContent !== text) list.textContent = text;
-    const need = p?.type === "propose" ? p.size : 1;
-    list.closest(".sel")?.classList.toggle("full", S.selected.length === need);
+  }
+  const slots = $("#sel-slots");
+  if (slots && need) {
+    const chosen = sortSeats(S.selected);
+    let html = "";
+    for (let i = 0; i < need; i++) {
+      const s = chosen[i];
+      html += s
+        ? `<span class="slot on${s === S.lastPick ? " new" : ""}" title="${s}号 ${esc(nameOf(s))}">${seatEmblem(s, "sm")}</span>`
+        : `<span class="slot">${ART.slotShield()}</span>`;
+    }
+    patch(slots, html);
+    patch($("#sel-cnt"), `<b>${S.selected.length}</b>/${need}`);
+    slots.parentElement.classList.toggle("full", S.selected.length === need);
   }
   const btn = $("#act-submit");
-  if (!btn || !p) return;
-  if (p.type === "propose") btn.disabled = S.selected.length !== p.size;
-  else if (["lady_choose", "assassin_suggest", "assassinate"].includes(p.type)) btn.disabled = S.selected.length !== 1;
+  if (!btn || !need || S.busy) return;
+  const off = S.selected.length !== need;
+  if (btn.disabled !== off) btn.disabled = off;
 }
 
 function bindAction(p) {
   const box = $("#action");
   const speech = () => ($("#act-speech")?.value || "").trim();
   const submit = async (data) => {
+    S.busy = true;
     box.querySelectorAll("button").forEach((b) => (b.disabled = true));
     try {
       await api(`/api/games/${S.gameId}/action`, { pending_id: p.id, ...data });
+      S.busy = false;
       S.selected = [];
-      setAction(`<div class="waiting"><span class="quill">${ic("quill")}</span><span class="wt">已提交</span><span class="dots" aria-hidden="true"></span></div>`);
       S.pendingKey = `done${p.id}`;
+      showWaiting(`<span class="w-v">已提交，等待其他玩家</span>`);
       setTimeout(poll, 150);
     } catch (err) {
+      S.busy = false;
       box.querySelectorAll("button").forEach((b) => (b.disabled = false));
+      box.querySelectorAll("[data-card='fail']").forEach((b) => { if (!p.can_fail) b.disabled = true; });
       updateSelectionUI();
       alert(err.message);
     }
@@ -1054,6 +1196,15 @@ function bindAction(p) {
   }
 }
 
+// 手机上行动栏是吸底的：把它的高度告诉页面，滚动定位（键盘聚焦、scrollIntoView）时让出这块位置
+if (window.ResizeObserver) {
+  new ResizeObserver(() => {
+    const h = `${Math.round($(".action-bar").offsetHeight)}px`;
+    const root = document.documentElement;
+    if (root.style.getPropertyValue("--dock-h") !== h) root.style.setProperty("--dock-h", h);
+  }).observe($(".action-bar"));
+}
+
 // 座位点击：选人 / 标记
 $("#table").addEventListener("click", (e) => {
   const seatEl = e.target.closest(".seat");
@@ -1068,9 +1219,10 @@ $("#table").addEventListener("click", (e) => {
   }
   const sel = selection();
   if (!sel || !sel.seats.includes(seat)) return;
-  if (S.selected.includes(seat)) S.selected = S.selected.filter((s) => s !== seat);
-  else if (sel.max === 1) S.selected = [seat];
-  else if (S.selected.length < sel.max) S.selected.push(seat);
+  // lastPick：行动栏里只有刚放进去的那面小盾弹一下
+  if (S.selected.includes(seat)) { S.selected = S.selected.filter((s) => s !== seat); S.lastPick = 0; }
+  else if (sel.max === 1) { S.selected = [seat]; S.lastPick = seat; }
+  else if (S.selected.length < sel.max) { S.selected.push(seat); S.lastPick = seat; }
   renderTable();
   updateSelectionUI();
 });
@@ -1128,7 +1280,7 @@ function eventHtml(ev) {
       const yes = entries.filter(([, v]) => v).length;
       const team = ev.team || [];
       const chips = entries.map(([s, v]) =>
-        `<span class="chip ${v ? "yes" : "no"}${team.includes(s) ? " on" : ""}"${team.includes(s) ? ' title="在车上"' : ""}>${s}号 ${v ? "✓" : "✗"}</span>`).join("");
+        `<span class="chip ${v ? "yes" : "no"}${team.includes(s) ? " on" : ""}" title="${s}号${v ? "赞成" : "反对"}${team.includes(s) ? "（在车上）" : ""}">${s}号${ic(v ? "check" : "cross")}</span>`).join("");
       return `<div class="ev ev-vote ${ev.approved ? "ok" : "rej"}"><div class="vhead">${ic("ballot")}<span>投票</span>
         <span class="${ev.approved ? "verdict-yes" : "verdict-no"}">${ev.approved ? "通过" : "否决"}</span>
         <span class="tally">${yes} : ${entries.length - yes}</span></div><div class="chips">${chips}</div></div>` + thoughts(ev, all);
