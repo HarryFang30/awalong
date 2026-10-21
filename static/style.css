@@ -499,6 +499,14 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .key-row input { flex: 1; min-width: 0; }
 .key-row button { white-space: nowrap; min-height: 42px; }
 .check-result { color: var(--ink-2); font-weight: 600; }
+.check-result:empty { display: none; }
+/* 测试连接的结果：和上面“已配置服务器 Key”同一种小签——成功是绿底，失败是浅玫瑰底深红字（不用系统彩色表情） */
+.check-result.ok, .check-result.bad {
+  display: flex; align-items: flex-start; gap: 6px; padding: 5px 10px; border-radius: 6px; font-size: 12.5px; overflow-wrap: anywhere;
+}
+.check-result.ok { color: var(--vert-ink); background: var(--vert-soft); box-shadow: inset 0 0 0 1px rgba(47, 122, 69, .3); }
+.check-result.bad { color: var(--crimson-ink); background: var(--crimson-soft); box-shadow: inset 0 0 0 1px rgba(138, 24, 36, .3); }
+.check-result .ic { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 2px; }
 .paper button.ghost { color: var(--ink); border-color: var(--parch-edge); background: rgba(255, 250, 235, .55); }
 .paper button.ghost:hover:not(:disabled) { border-color: var(--gold-deep); background: rgba(201, 162, 74, .2); }
 .paper button:not(.primary):not(.good):not(.evil):not(.ghost) { color: var(--ink); background: linear-gradient(180deg, #fbf3df, #ead9b3); border-color: var(--parch-edge); box-shadow: 0 1px 2px rgba(90, 60, 20, .2); }
@@ -837,6 +845,9 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
   background: radial-gradient(closest-side, rgba(236, 208, 138, .1), rgba(236, 208, 138, 0) 80%);
   box-shadow: 0 0 10px rgba(236, 208, 138, .22), inset 0 0 10px rgba(236, 208, 138, .14);
 }
+/* 队伍已经选满：其余座位的虚线圈淡下去（要换人先点掉一个已选的） */
+.table.full .seat.selectable:not(.selected) .avatar::after { opacity: .3; box-shadow: none; }
+.table.full .seat.selectable:not(.selected) .avatar:hover { transform: none; }
 .seat.selectable .avatar:hover { transform: translateY(-3px) scale(1.05); }
 .seat.selectable .avatar:hover::after { border-style: solid; border-color: var(--gold-hi); }
 .seat.selectable .avatar:focus-visible { outline: none; }
@@ -978,7 +989,7 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 }
 .mo-wrap.out .mo { transform: translate(-50%, -50%) scale(calc(var(--mo-s, 1) * .94)) translateY(-8px); }
 /* 时刻和身份牌出现时，桌心的文字立刻让开；时刻收起后，桌心的文字晚一拍（.table-center 的 transition-delay）再出来 */
-.table-wrap[data-mo] .table-center, .table-wrap:has(.reveal:not(.out)) .table-center { opacity: 0; transition-delay: 0s; }
+.table-wrap[data-mo] .table-center, .table-wrap:has(.reveal:not(.out)) .table-center { opacity: 0; transition: none; }
 
 /* 传令：圆桌滚出屏幕时（app.js 的 heraldMoment），时刻固定在看得见的地方，
    衬一块深色皮革底板（金线双框、四角铆钉），后面一层淡淡的暗幕——不再光秃秃地压在身份卡和记录的字上 */
@@ -1121,34 +1132,35 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
 .mo-ring {
   position: absolute; width: var(--r); height: var(--r); margin: calc(var(--r) / -2) 0 0 calc(var(--r) / -2);
   border-radius: 50%; pointer-events: none;
+  background: none; padding: 0; /* 修饰类名带 r- 前缀，不再撞上座位的 .mark / .lady 样式 */
 }
-.mo-ring.ripple, .mo-ring.lady, .mo-ring.mark { animation: ripple 1.35s ease-out var(--d, 0ms) both; }
-.mo-ring.lady { border: 2.5px solid #a8e2f5; box-shadow: 0 0 18px 4px rgba(63, 143, 174, .65), inset 0 0 12px rgba(168, 226, 245, .4); }
-.mo-ring.mark { border: 2.5px solid #ffb4a8; box-shadow: 0 0 18px 5px rgba(212, 70, 75, .6), inset 0 0 12px rgba(255, 150, 140, .4); }
+.mo-ring.ripple, .mo-ring.r-lady, .mo-ring.r-evil { animation: ripple 1.35s ease-out var(--d, 0ms) both; }
+.mo-ring.r-lady { border: 2.5px solid #a8e2f5; box-shadow: 0 0 18px 4px rgba(63, 143, 174, .65), inset 0 0 12px rgba(168, 226, 245, .4); }
+.mo-ring.r-evil { border: 2.5px solid #ffb4a8; box-shadow: 0 0 18px 5px rgba(212, 70, 75, .6), inset 0 0 12px rgba(255, 150, 140, .4); }
 @keyframes ripple { 0% { transform: scale(.55); opacity: 0; } 18% { opacity: 1; } 100% { transform: scale(1.65); opacity: 0; } }
 /* 刺杀：红色虚线准星收拢到目标上 */
-.mo-ring.aim {
+.mo-ring.r-aim {
   border: 2.5px dashed #ffb4a8;
   box-shadow: 0 0 0 3px rgba(158, 27, 42, .45), 0 0 26px 8px rgba(212, 70, 75, .45), inset 0 0 18px rgba(255, 120, 110, .35);
   animation: ring-close .55s cubic-bezier(.3, 1.3, .5, 1) both, ring-spin 6s linear .55s infinite;
 }
-.is-hit .mo-ring.aim {
+.is-hit .mo-ring.r-aim {
   border-style: solid; border-color: #ffd6cf;
   box-shadow: 0 0 0 4px rgba(158, 27, 42, .75), 0 0 44px 16px rgba(212, 70, 75, .6), inset 0 0 22px rgba(255, 120, 110, .5);
 }
-.is-hit .mo-ring.aim::before {
+.is-hit .mo-ring.r-aim::before {
   content: ""; position: absolute; inset: -40%; border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 170, 150, .9), rgba(212, 70, 75, .45) 38%, transparent 68%);
   animation: burst .65s ease-out both;
 }
-.is-miss .mo-ring.aim { border-color: rgba(236, 224, 200, .55); box-shadow: 0 0 0 3px rgba(0, 0, 0, .35); animation-play-state: paused; }
+.is-miss .mo-ring.r-aim { border-color: rgba(236, 224, 200, .55); box-shadow: 0 0 0 3px rgba(0, 0, 0, .35); animation-play-state: paused; }
 /* 落空时：真正的梅林亮起金色光环 */
-.mo-ring.merlin {
+.mo-ring.r-merlin {
   border: 3px solid #f6e2a2;
   box-shadow: 0 0 0 3px rgba(31, 78, 140, .8), 0 0 36px 12px rgba(236, 208, 138, .55), inset 0 0 18px rgba(236, 208, 138, .45);
   animation: ring-close .5s cubic-bezier(.3, 1.3, .5, 1) both;
 }
-.mo-ring.merlin::after {
+.mo-ring.r-merlin::after {
   content: "真正的梅林"; position: absolute; left: 50%; bottom: calc(100% + 2px); transform: translateX(-50%);
   white-space: nowrap; font: 700 12px/20px var(--sans); letter-spacing: 1px; padding: 0 11px; color: #fff6dc;
   background: linear-gradient(180deg, #24548f, #173e74);
@@ -1337,6 +1349,7 @@ label.check { flex-direction: row !important; align-items: center; gap: 8px; }
   animation: ev-in .25s ease-out both;
 }
 .log-new[hidden] { display: none; }
+@media (pointer: coarse) { .log-new { min-height: 40px; } } /* 手指点得准 */
 .log-new .ic { width: 16px; height: 16px; color: var(--gold-deep); }
 .log-new:hover:not(:disabled) { background: #fffaf0; border-color: var(--crimson); }
 .log::-webkit-scrollbar { width: 9px; }
@@ -1643,6 +1656,16 @@ body.show-thoughts .thought { display: flex; }
 .act-side .pick .cnt { font: 600 13px/1 var(--num); color: var(--ink-3); white-space: nowrap; }
 .act-side .pick .cnt b { font-size: 20px; color: var(--crimson-ink); }
 .pick.full { background: rgba(47, 122, 69, .1); box-shadow: inset 0 0 0 1.5px rgba(47, 122, 69, .55); }
+/* 选满了还去点别人：已选这一栏晃一下，上方浮出一句提示 */
+.pick { position: relative; }
+.pick.nudge { animation: nudge .4s ease-in-out; }
+.pick.nudge::after {
+  content: attr(data-full); position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 3; pointer-events: none;
+  padding: 3px 10px; border-radius: 6px; white-space: nowrap; font: 700 12.5px/20px var(--sans); letter-spacing: .5px;
+  color: #fff3ee; background: var(--crimson-ink); box-shadow: 0 3px 8px rgba(40, 10, 10, .35);
+  animation: fade-in .15s ease-out both;
+}
+@keyframes nudge { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
 .act-side .pick.full .cnt b { color: var(--vert-ink); }
 
 .panel button { min-height: 46px; padding: 8px 20px; font-size: 15.5px; letter-spacing: 2px; white-space: nowrap; }
@@ -1713,6 +1736,7 @@ body.show-thoughts .thought { display: flex; }
 .w-tip:empty { display: none; }
 .w-tip-k { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 700; letter-spacing: 1px; color: var(--gold-hi); }
 .w-tip-k .ic { width: 14px; height: 14px; align-self: center; }
+.w-tip-k.say { letter-spacing: 0; } /* 手机上发言阶段：这一格是最新的一条发言（N号 名字：……） */
 .w-tip-t.in { animation: tip-in .6s ease-out both; }
 @keyframes tip-in { from { opacity: 0; transform: translateY(5px); } }
 .dots::after { content: ""; display: inline-block; width: 1.4em; text-align: left; animation: dots 1.4s steps(4) infinite; }
@@ -2009,8 +2033,11 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
    开局身份揭晓：圆桌上方一张不透明的塔罗牌，约 2 秒后飞进身份卡
    （只盖住圆桌区域，不挡对局记录和行动栏）
    ===================================================================== */
-.reveal { position: absolute; inset: 0; z-index: 7; display: grid; place-items: center; cursor: pointer; perspective: 1000px; }
-.reveal.out { pointer-events: none; }
+/* 显式的一格：牌比圆桌高（矮屏上要缩小）时，格子不会被牌撑高，缩小后的牌仍在圆桌正中 */
+/* 只有牌本身接住点击：点牌收起；点牌外的座位直接穿过去——收起身份牌的同时就选上了人（首任队长不用点两下） */
+.reveal { position: absolute; inset: 0; z-index: 7; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; perspective: 1000px; pointer-events: none; }
+.reveal .rv-card { pointer-events: auto; cursor: pointer; }
+.reveal.out, .reveal.out .rv-card { pointer-events: none; }
 .rv-scrim {
   position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(closest-side, rgba(14, 8, 4, .88), rgba(14, 8, 4, .72) 58%, rgba(14, 8, 4, 0));
@@ -2718,6 +2745,25 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .act-side.vote button { flex: 1 1 0; min-height: 48px; }
   .panel .card-btn { min-height: 64px; }
   .panel .alert { margin-top: 5px; }
+  /* 湖中仙女公布：标题一行、三个选项一行、发言框和“公布”并排——不再四五行高（挡住你的座位、把按钮挤出屏幕） */
+  .panel-lady_announce { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "head head" "claim claim" "speech side"; column-gap: 10px; }
+  .panel-lady_announce .act-sub { display: none; }
+  .panel-lady_announce .act-main { display: contents; }
+  .panel-lady_announce .claim-row { grid-area: claim; flex-wrap: nowrap; gap: 5px; }
+  .panel-lady_announce .pill-radio span { padding: 0 12px; white-space: nowrap; }
+  .panel-lady_announce #act-speech { grid-area: speech; width: 100%; }
+  .panel-lady_announce .act-side { align-self: end; flex-wrap: nowrap; }
+  .panel-lady_announce .act-side > button { flex: 0 0 auto; width: 84px; min-height: 42px; padding: 6px 10px; }
+}
+/* 等待时的小贴士（手机上发言阶段换成最新的一条发言）：一句一行、一句两行，行动栏不跟着一高一矮
+   （翻着看记录时页面不会跳）——窄屏竖屏、横屏都固定留两行高；平板（721–900）最多两行、同样留两行 */
+@media (max-width: 720px), (orientation: landscape) and (max-height: 620px) and (min-width: 600px) {
+  .w-tip-t { min-height: 3em; }
+  .pick.nudge::after { left: 0; right: auto; } /* 已选栏在左边：提示往右展开，不伸出屏幕 */
+}
+@media (min-width: 721px) and (max-width: 900px) {
+  .w-tip { flex: 1 1 0; min-height: 3.1em; align-items: center; } /* 和“谁在思考”同一行分空间，不再整句折到下一行 */
+  .w-tip-t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 }
 /* 手机、9 人以上：桌子压扁一点，整圈座位能放进吸底行动栏上方 */
 @media (max-width: 560px) and (max-height: 940px) {
@@ -2775,6 +2821,9 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
      整页永远不超过一屏 */
   #game { grid-template-rows: auto minmax(0, max-content) minmax(118px, 1fr); }
   .action-bar { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  /* 卡片比行动栏高时只往下溢出（能滚到），不再上下各溢出一截、把标题和“轮到你了”缎带切在看不到的地方 */
+  .action-bar { align-items: flex-start; align-items: safe center; }
+  .panel-lady_announce .claim-k { display: none; } /* 窄窄的一栏：只留三个选项（读屏仍念“公开宣布”） */
   /* 行动卡片只留标题和按钮：点几个人、需几张失败、同车的人，桌心和圆桌上都标着 */
   .ah-long { display: none; }
   .panel-propose .act-sub, .panel-quest .act-sub, .panel-quest .act-note, .panel-lady_choose .act-sub,
@@ -2819,6 +2868,11 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .label .lb-x { display: none; }
   .mark { font-size: 10px; line-height: 14px; padding: 0 4px; }
   .labels { margin-top: 1px; }
+  /* 最矮的横屏（360 高）：行动栏最多只有约 177px（下面的记录要留够），卡片的留白再收一点，按钮整个露出来、不用在卡片里滚 */
+  .action-bar { padding: 6px 8px 4px; }
+  .action-bar.your-turn { padding-top: 14px; }
+  .action-bar.your-turn .hint-btn { top: 20px; }
+  .panel { padding: 11px 11px 8px; row-gap: 6px; }
   .table-center { font-size: 11.5px; line-height: 1.4; }
   .tc-kicker { font-size: 10.5px; letter-spacing: 1px; }
   .table-center .phase { font-size: 14.5px; letter-spacing: 1px; }
@@ -2861,6 +2915,19 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .table.crowded .vote-chip { right: calc(var(--sh) * -.12); }
   .table.crowded .crown { top: calc(var(--sh) * -.31); width: calc(var(--sh) * .5); height: calc(var(--sh) * .38); }
   .table.crowded .label { font-size: 10px; padding: 0 5px; letter-spacing: -.2px; }
+  /* 10 人桌：选中的盾牌不再抬高放大，光圈和光晕收小一圈，缎带往上收一点——
+     上面那个座位的“坏人队友”等缎带不会被罩进下面座位的金色光晕里 */
+  .table.crowded .seat.selected .avatar { transform: scale(1.03); }
+  .table.crowded .avatar::after { width: calc(var(--sh) * 1.32); height: calc(var(--sh) * 1.32); }
+  .table.crowded .seat.selected .avatar::after { box-shadow: 0 0 0 2px rgba(201, 162, 74, .5), 0 0 10px 2px rgba(255, 214, 120, .45), inset 0 0 10px rgba(255, 230, 170, .3); }
+  .table.crowded .seat.selected .avatar::before { transform: translate(-50%, -50%) scale(.9); }
+  .table.crowded .labels { margin-top: -1px; }
+  /* 窄屏组 4–5 人的队：已选栏收窄一点（不写“已选”二字，n/N 和小盾已经说明了），“确认发车”不再单独折到第二行 */
+  .act-side .pick-k { display: none; }
+  .pick .slot { width: 22px; }
+  .pick .slot .emb { --ew: 21px; --ed: 12px; --ef: 8.5px; }
+  .pick .slot-shield { width: 20px; height: 24px; }
+  .act-side > button { flex-basis: 96px; }
 }
 
 /* 触屏：按钮至少 40px 高；标记按钮视觉小，但点击区域靠 ::after 放大 */
@@ -2888,6 +2955,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
     animation-iteration-count: 1 !important;
     animation-delay: 0s !important;
     transition-duration: .001ms !important;
+    transition-delay: 0s !important;
     scroll-behavior: auto !important;
   }
   .dots::after { content: "…"; animation: none !important; }
@@ -2897,7 +2965,7 @@ dialog:has(.modal-foot:not([hidden])) .modal-body { padding-bottom: 18px; }
   .panel.enter, .panel.enter::after, .panel.enter .turn-tag, .w-tip-t.in, .pick .slot.new .emb { animation: none !important; }
   .panel.enter::after { display: none; }
   /* 时刻：直接摆出最终状态（牌已翻开、印章已落下），不飘金箔 */
-  .plq, .qcard, .qc-in, .qc-kick, .mo-ring, .mo-dagger, .mo-wrap.out, .is-hit .mo-ring.aim::before,
+  .plq, .qcard, .qc-in, .qc-kick, .mo-ring, .mo-dagger, .mo-wrap.out, .is-hit .mo-ring.r-aim::before,
   .rv-scrim, .rv-card, .mo-finale.out, .fn-scrim, .fn-hang, .fn-title, .fn-hint { animation: none !important; }
   .mo, .mo-wrap.out .mo { transition: none !important; }
   .is-miss .mo-dagger { opacity: 0; }

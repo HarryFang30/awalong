@@ -285,12 +285,18 @@ function refreshMode() {
 
 async function checkKey() {
   const out = $("#check-result");
+  // 结果：内联图标 + 有底色的小签；✅ / ❌ 只留给读屏软件（不显示系统彩色表情）
+  const show = (ok, msg) => {
+    out.className = `small check-result ${ok ? "ok" : "bad"}`;
+    out.innerHTML = `${ic(ok ? "check" : "cross")}<span><span class="sr-only">${ok ? "✅" : "❌"} </span>${esc(msg)}</span>`;
+  };
+  out.className = "small check-result";
   out.textContent = "测试中…";
   try {
     const r = await api("/api/check-key", { api_key: $("#f-key").value.trim(), model: $("#f-model").value.trim() });
-    out.textContent = (r.ok ? "✅ " : "❌ ") + r.message;
+    show(r.ok, r.message);
   } catch (err) {
-    out.textContent = "❌ " + err.message;
+    show(false, err.message);
   }
 }
 
@@ -483,9 +489,15 @@ async function pollOnce(id) {
   }
 }
 
+// 轮到你的待办。刚提交过的那条不算：提交之前发出的轮询晚到时还带着它，交过的卡片不能又摆回来
+const myTurn = () => {
+  const p = S.g?.pending;
+  return p && S.pendingKey !== `done${p.id}` ? p : null;
+};
+
 function render() {
   // 新的待办：先清空上一次的选择，再画桌子（行动栏不用再重画一遍桌子）
-  const p = S.g.pending;
+  const p = myTurn();
   if (p && S.pendingKey !== `p${p.id}`) { S.selected = []; S.lastPick = 0; }
   renderTracks();
   renderTable();
@@ -495,9 +507,11 @@ function render() {
   maybeReveal();
 }
 
+// 翻牌途中，顶栏、否决数还停在正在揭晓的这一轮（不管牌翻开后游戏是否继续，看上去都一样）
+const shownQuest = () => (S.fx.holdQuest >= 0 ? S.fx.holdQuest : S.g.quest_index);
 function currentRejects() {
-  const g = S.g;
-  return S.events.filter((e) => e.type === "vote" && e.quest === g.quest_index && !e.approved).length;
+  const qi = shownQuest();
+  return S.events.filter((e) => e.type === "vote" && e.quest === qi && !e.approved).length;
 }
 
 function renderTracks() {
@@ -507,11 +521,12 @@ function renderTracks() {
   const quests = g.quests.map((q, i) => (i === S.fx.holdQuest ? { ...q, success: null } : q));
   const now = quests.map((q) => q.success);
   S.fx.quests = now;
+  const cur = S.fx.holdQuest >= 0 || ACTIVE.includes(g.status) ? shownQuest() : -1;
   const html = quests.map((q, i) => {
     let cls = "";
     if (q.success === true) cls = "success";
     else if (q.success === false) cls = "fail";
-    else if (i === g.quest_index && ACTIVE.includes(g.status)) cls = "current";
+    else if (i === cur) cls = "current";
     let title = `第${i + 1}轮：${q.size}人`;
     if (q.fails_needed === 2) title += "，需要2张失败才失败";
     if (q.success !== null) title += `；${q.success ? "成功" : "失败"}（${q.fails}张失败）`;
@@ -538,22 +553,28 @@ function failPips(q) {
   return `<span class="qf" aria-hidden="true">${q.fails <= 3 ? d.repeat(q.fails) : `${d}<i>×${q.fails}</i>`}</span>`;
 }
 
+// 揭晓的“闸门”：还没翻定的任务结果 / 还没开演的“刺杀阶段”。闸门之后到的事件（下一轮的提名、发言、
+// 坏人讨论刺杀谁……）在桌上和记录里先当没发生，免得翻牌途中就看出游戏是否还在继续
+const gateId = () => S.fx.questGate || S.fx.holdReveal;
+
 // 最近一次投票；新的提名开始后它就“过时”了：座位上的票型缩小变暗，但仍然看得清
 function lastVote() {
+  const gate = gateId();
   let stale = false;
   for (let i = S.events.length - 1; i >= 0; i--) {
-    const t = S.events[i].type;
-    if (t === "vote") return { ev: S.events[i], stale };
-    if (t === "proposal" || t === "quest_start" || (t === "evil_reveal" && !S.fx.holdReveal)) stale = true;
+    const e = S.events[i];
+    if (gate && e.id >= gate) continue;
+    if (e.type === "vote") return { ev: e, stale };
+    if (e.type === "proposal" || e.type === "quest_start" || e.type === "evil_reveal") stale = true;
   }
   return null;
 }
 
-// 揭晓之前（最后一次翻牌、刺杀、胜负）先压住行动栏；已经摆出来的行动卡片不收回（不打断正在输入的人）
+// 揭晓之前（翻牌、刺杀、胜负）先压住行动栏；已经摆出来的行动卡片不收回（不打断正在输入的人）
 const dockHeld = () => !!S.fx.holdEnd && !(S.g?.pending && S.pendingKey === `p${S.g.pending.id}`);
 
 function selection() {
-  const p = S.g.pending;
+  const p = myTurn();
   if (!p || dockHeld()) return null;
   if (p.type === "propose") return { seats: S.g.players.map((x) => x.seat), max: p.size, type: p.type };
   if (["lady_choose", "assassin_suggest", "assassinate"].includes(p.type)) return { seats: p.candidates, max: 1, type: p.type };
@@ -839,13 +860,19 @@ const PICK_ICON = { propose: "check", lady_choose: "waves", assassin_suggest: "d
 function renderTable() {
   const g = S.g;
   const sel = selection();
-  const team = g.proposal || [];
-  const lv = S.ended ? null : lastVote();
+  // 翻牌途中：车上的人、队长王冠照旧；谁在思考（下一任队长 / 坏人讨论刺杀）等揭晓之后再显示
+  const flipping = S.fx.holdQuest >= 0;
+  const team = (flipping ? S.fx.holdTeam : g.proposal) || [];
+  const quiet = flipping || !!S.fx.holdReveal;
+  // 终局后座位上不再挂票型——但要等揭晓完（翻牌途中对局就结束了，票型一下子消失也是剧透）
+  const lv = S.ended && !S.fx.holdEnd ? null : lastVote();
   const vote = lv?.ev;
   const freshVote = vote && !lv.stale && vote.id === S.fx.voteId && performance.now() - S.fx.voteAt < 1500;
   const table = $("#table");
   const tcls = ["table"];
   if (sel) tcls.push("picking", `pick-${sel.type}`);
+  // 队伍已经选满：其余座位不再像“可以点”（要换人先点掉一个已选的）
+  if (sel && sel.max > 1 && S.selected.length >= sel.max) tcls.push("full");
   if (g.n >= 9) tcls.push("crowded");
   const tclass = tcls.join(" ");
   if (table.className !== tclass) {
@@ -876,7 +903,7 @@ function renderTable() {
       if (sel.seats.includes(p.seat)) { cls.push("selectable"); selectable = true; } else cls.push("dim");
       if (S.selected.includes(p.seat)) cls.push("selected");
     }
-    if (g.thinking.includes(p.seat)) cls.push("thinking");
+    if (g.thinking.includes(p.seat) && !quiet) cls.push("thinking");
     if (p.role_name && open) cls.push("revealed", `team-${p.team}`);
     if (RING.side[p.seat]) cls.push(RING.side[p.seat]);
     const className = cls.join(" ");
@@ -884,7 +911,7 @@ function renderTable() {
     placeSeat(el, p.seat);
 
     // 纹章盾 + 座位号圆章 + 各种徽记
-    const isLeader = g.leader === p.seat && ACTIVE.includes(g.status);
+    const isLeader = g.leader === p.seat && (ACTIVE.includes(g.status) || flipping);
     let chip = "";
     if (vote) {
       const v = vote.votes[String(p.seat)];
@@ -968,7 +995,8 @@ function centerText() {
   if (g.status === "ended") {
     return `<div class="tc-kicker">对局结束</div><div class="phase win-${g.winner}">${g.winner === "good" ? "好人" : "坏人"}阵营获胜</div><div class="tc-line">${esc(g.end_reason)}</div>`;
   }
-  if (g.status === "error") return `<div class="phase">出错了</div><div class="tc-line">${esc(g.error)}</div>`;
+  // 出错的原因可能是一长串异常信息：桌心只写一句，完整原因在下方的行动栏和记录里
+  if (g.status === "error") return `<div class="phase">出错了</div><div class="tc-line">对局中断，原因见下方</div>`;
   if (g.status === "cancelled") return `<div class="phase">对局已停止</div><div class="tc-line">这局已被中止</div>`;
   // 轮到你点人：桌心直接告诉你点几个、点了几个
   const sel = selection();
@@ -999,7 +1027,7 @@ function centerText() {
   if (g.phase === "assassinate") return `<div class="tc-kicker">好人三胜</div><div class="phase evil-text">刺杀阶段</div><div class="tc-line">坏人正在讨论谁是梅林</div>`;
   if (g.phase === "lady") {
     // 湖中仙女在第 quest_index 轮（从 0 数）结束之后使用
-    const line = g.pending?.type === "lady_announce" ? "等待你公布查验结果"
+    const line = myTurn()?.type === "lady_announce" ? "等待你公布查验结果"
       : g.lady_holder ? `${whoIs(g.lady_holder)}正在查验` : phase;
     return `<div class="tc-kicker">第${g.quest_index + 1}轮之后</div><div class="phase">湖中仙女</div><div class="tc-line">${line}</div>`;
   }
@@ -1101,13 +1129,16 @@ function resetFx() {
     voteId: 0, voteAt: 0,   // 刚揭晓的投票：座位上的票依次弹出
     quests: null,           // 顶栏火漆的上一次状态（新盖上的才播放动画）
     cur: null, queue: [], finale: null, leaving: false, idle: [],
-    holdQuest: -1,          // 翻牌揭晓之前，顶栏这一轮先不盖火漆
+    holdQuest: -1,          // 翻牌揭晓之前，顶栏这一轮先不盖火漆、仍标为当前轮
+    questGate: 0,           //   那条任务结果的 id（闸门，见 gateId）
+    holdTeam: null,         //   翻牌途中桌上照旧标出的这支队伍
     holdRoles: false,       // 匕首落下之前，座位上先不亮出全部身份
-    holdReveal: 0,          // “刺杀阶段”这一幕开演之前（存的是那条事件的 id）：座位上先不挂“坏人（已亮明）”，
-    revealRows: [],         //   之后到的记录（坏人讨论刺杀谁）也先扣着
-    holdEnd: "",            // 揭晓之前（胜负标题 / 刺杀阶段这一幕）行动栏先显示这句
+    holdReveal: 0,          // “刺杀阶段”这一幕开演之前（存的是那条事件的 id）：座位上先不挂“坏人（已亮明）”
+    gateRows: [],           // 闸门之后到的记录（下一轮的提名发言、坏人讨论刺杀谁）：闸门打开时放出
+    holdEnd: "",            // 揭晓之前（翻牌 / 刺杀阶段 / 刺杀 / 胜负标题）行动栏先显示这句
     heldLog: new Set(),     // 扣住的对局记录（事件 id）
     revealTimer: 0,
+    revealPid: null,        // 开局身份牌亮出时已经在等你的那条待办（它不会把身份牌赶走）
   };
   const box = $("#moment");
   if (box) box.innerHTML = "";
@@ -1136,22 +1167,29 @@ function whenFxIdle(fn) {
 }
 
 // ---------- 新事件到达、渲染之前：先压住会剧透的东西 ----------
-const END_WAIT = { assassination: "刺客出手了……", quest_result: "任务牌揭晓中……", vote: "投票揭晓中……" };
+const END_WAIT = {
+  assassination: "刺客出手了……", quest_result: "任务牌揭晓中……", vote: "投票揭晓中……", evil_reveal: "坏人正在讨论谁是梅林……",
+};
 function prepMoment(ev) {
   const fx = S.fx;
   if (ev.type === "vote") {
     fx.voteId = ev.id;
     fx.voteAt = performance.now();
   } else if (ev.type === "quest_result") {
+    // 每一次翻牌都一样：牌翻定之前，桌面、顶栏、行动栏、记录都停在出牌那一刻。
+    // 不然决胜轮“停住”、普通轮“下一轮已经开始”，第一眼就能看出结果
     fx.holdQuest = ev.quest;
+    fx.questGate = ev.id;
+    fx.holdTeam = ev.team;
+    fx.holdEnd ||= END_WAIT.quest_result;
   } else if (ev.type === "evil_reveal") {
-    // 好人三胜、坏人亮明身份：缎带和记录等“刺杀阶段”这一幕开演再出现；
-    // 前面还压着最后一次翻牌时，行动栏也先等着（不抢在牌翻开之前告诉你好人赢了三轮）
+    // 好人三胜、坏人亮明身份：缎带、记录、行动栏等“刺杀阶段”这一幕开演再出现
     fx.holdReveal = ev.id;
-    if (fx.holdQuest >= 0 && !fx.holdEnd) fx.holdEnd = END_WAIT.quest_result;
   } else if (ev.type === "game_end") {
-    // 前面的翻牌 / “刺杀阶段”还没演到：行动栏保持原来那句，等那几幕开演时再换（setHold）
+    // 前面的翻牌 / “刺杀阶段”还没演完：行动栏保持那几幕对应的那句，等后面几幕开演时再换（setHold）
+    const evilOn = fx.cur?.m.type === "evil_reveal" || fx.queue.some((m) => m.type === "evil_reveal");
     if (fx.holdQuest >= 0 || fx.holdReveal) fx.holdEnd ||= END_WAIT.quest_result;
+    else if (evilOn) fx.holdEnd = END_WAIT.evil_reveal;
     else {
       const before = S.events[S.events.length - 2];
       fx.holdEnd = END_WAIT[before?.type] || "对局结束，正在揭晓……";
@@ -1168,7 +1206,10 @@ function setHold(text) {
 function releaseQuest() {
   if (S.fx.holdQuest < 0) return;
   S.fx.holdQuest = -1;
-  if (S.g) renderTracks();
+  S.fx.questGate = 0;
+  S.fx.holdTeam = null;
+  releaseGate();
+  if (S.g) { renderTracks(); renderTable(); }
 }
 function releaseRoles() {
   if (!S.fx.holdRoles) return;
@@ -1178,9 +1219,23 @@ function releaseRoles() {
 function releaseReveal() {
   if (!S.fx.holdReveal) return;
   S.fx.holdReveal = 0;
-  S.fx.revealRows.splice(0).forEach(releaseLog);
+  releaseGate();
   if (S.g) renderTable();
 }
+// 闸门打开：放出扣在它后面的记录；后面还有一道闸门（刺杀阶段）的，继续扣到那一幕开演
+function releaseGate() {
+  const gate = gateId();
+  S.fx.gateRows = S.fx.gateRows.filter((id) => {
+    if (gate && id > gate) return true;
+    releaseLog(id);
+    return false;
+  });
+}
+// 只执行一次：一幕的 release 会在开演、落定、收起时各被叫到一次，后几次不能把行动栏的话改回去
+const once = (fn) => {
+  let done = false;
+  return () => { if (!done) { done = true; fn(); } };
+};
 function releaseEnd() {
   releaseRoles();
   if (!S.fx.holdEnd) return;
@@ -1227,7 +1282,7 @@ function ring(parent, seat, kind, delay = 0) {
 // 不占桌心的小涟漪（湖中仙女查验了谁）：独立于印章队列，减少动态效果时不画
 function ripple(seat, kind) {
   if (reduceMotion()) return;
-  const el = ring($("#moment"), seat, `ripple ${kind}`);
+  const el = ring($("#moment"), seat, `ripple r-${kind}`);
   if (el) fxLater(() => el.remove(), 1500);
 }
 // 聚光：圆桌变暗，只留下这些座位
@@ -1272,14 +1327,14 @@ const MOMENTS = {
       `<div class="qc-face qc-back"><span class="qc-wax">${ic("swords")}</span></div>` +
       `<div class="qc-face qc-front ${ok ? "ok" : "bad"}">${ic(ok ? "chalice" : "dagger")}<span>${ok ? "成功" : "失败"}</span></div></div></div>`;
     const need = ev.fails_needed === 2 ? "（本轮需2张）" : "";
-    const release = () => {
+    const release = once(() => {
       if (S.fx.holdQuest === ev.quest) releaseQuest();
       releaseLog(ev.id);
-      // 最后一次翻牌落定：结果已经摆在桌上，行动栏可以呈上下一步了（比如轮到你出牌）。
+      // 翻牌落定：结果已经摆在桌上，行动栏可以呈上下一步了（比如轮到你组队）。
       // 后面还排着“刺杀阶段”这一幕时，行动栏等那一幕开演再放（轮到你刺杀的卡片不抢在宣布之前出现）；
       // 对局已经结束时行动栏归胜负标题管
       if (S.fx.holdEnd && !S.fx.holdReveal && S.g?.status !== "ended") releaseEnd();
-    };
+    });
     return {
       kind: "quest", min: land + 350, hurry: land + 700, ms: land + 1500, land, release,
       html: `<div class="mo"><div class="qc-kick">第${ev.quest + 1}轮任务 · ${n}张任务牌</div>` +
@@ -1301,27 +1356,27 @@ const MOMENTS = {
       kind: "lady", min: 400, hurry: 1300, ms: 2300,
       html: `<div class="mo">${plaque("lady", "waves", `湖中仙女 · ${whoIs(ev.holder)}宣布`,
         ev.claim ? `${ev.target}号是${TEAM_NAME[ev.claim]}` : "不公布结果", sub)}</div>`,
-      start: (c) => ring(c.el, ev.target, "lady"),
+      start: (c) => ring(c.el, ev.target, "r-lady"),
     };
   },
 
   evil_reveal(ev) {
     const mine = player(ev.assassin)?.is_human;
     // 这一幕开演（或被更新的事件顶替）时：座位缎带、记录里的“刺杀阶段”、行动栏一起放出来。
-    // 对局已经结束时行动栏归胜负标题管，这里不放
-    const release = () => {
+    // 对局已经结束时行动栏归胜负标题管，这里只把那句话往前推一步（从“翻牌中”到“讨论中”，不会退回去）
+    const release = once(() => {
       releaseReveal();
       releaseLog(ev.id);
       if (S.g?.status !== "ended") releaseEnd();
-      else setHold("坏人正在讨论谁是梅林……");
-    };
+      else if (S.fx.holdEnd === END_WAIT.quest_result) setHold(END_WAIT.evil_reveal);
+    });
     return {
       kind: "evil", min: 900, hurry: 1300, ms: 2600, release,
       html: `<div class="mo">${plaque("evil", "dagger", "好人完成了3次任务", "刺杀阶段",
         `坏人亮明身份 · ${mine ? "你是刺客：找出梅林" : `刺客${ev.assassin}号寻找梅林`}`)}</div>`,
       start: (c) => {
         release();
-        ev.evil.forEach((s, i) => ring(c.el, s, "mark", i * 110));
+        ev.evil.forEach((s, i) => ring(c.el, s, "r-evil", i * 110));
       },
     };
   },
@@ -1336,14 +1391,14 @@ const MOMENTS = {
     if (hit) sub = `${whoIs(ev.target)}正是梅林 · 坏人翻盘`;
     else if (merlin) sub = `${ev.target}号${tgt?.role_name ? `是${esc(tgt.role_name)}` : "不是梅林"} · 真正的梅林是${whoIs(merlin)}`;
     else sub = `${ev.target}号不是梅林 · 好人守住了胜利`;
-    const release = () => { releaseRoles(); releaseLog(ev.id); };
+    const release = once(() => { releaseRoles(); releaseLog(ev.id); });
     return {
       kind: "assassin", min: 2000, hurry: 2000, ms: 2900, land: 620, release,
       html: `<div class="mo">${plaque(hit ? "evil" : "good", hit ? "dagger" : "chalice", kick, hit ? "刺中梅林！" : "刺杀落空", sub, "", 700)}</div>`,
       start(c) {
         setHold(END_WAIT.assassination);
         spot([ev.target]);
-        ring(c.el, ev.target, "aim");
+        ring(c.el, ev.target, "r-aim");
         const pt = seatPoint(ev.target);
         if (pt) {
           const d = document.createElement("span");
@@ -1359,7 +1414,7 @@ const MOMENTS = {
         c.el.classList.add(hit ? "is-hit" : "is-miss");
         if (!hit && merlin && merlin !== ev.target) {
           spot([ev.target, merlin]);
-          ring(c.el, merlin, "merlin");
+          ring(c.el, merlin, "r-merlin");
         }
         release();
       },
@@ -1417,7 +1472,8 @@ function playMoments(evs) {
   let end = null;
   for (const ev of evs) {
     if (ev.type === "game_end") end = ev;
-    else if (ev.type === "lady_check") ripple(ev.target, "lady");
+    // 翻牌途中先不画（湖中仙女有动静 = 游戏还在继续）；紧接着的“宣布”那一幕会再圈出这个人
+    else if (ev.type === "lady_check") { if (S.fx.holdQuest < 0) ripple(ev.target, "lady"); }
     else if (MOMENTS[ev.type]) {
       while (seq.length && !follows(seq[seq.length - 1].type, ev.type)) {
         const old = seq.pop();
@@ -1475,7 +1531,7 @@ function startMoment(m) {
     else c.landTimer = fxLater(() => landMoment(c), m.land);
   }
   // 轮到你行动时：只演关键部分；后面还排着下一幕时收短一点（刺杀阶段 → 刺杀 → 胜负连着演，不拖沓）
-  const ms = S.g?.pending && !m.body ? m.hurry : fx.queue.length ? Math.max(m.hurry, m.ms - 800) : m.ms;
+  const ms = myTurn() && !m.body ? m.hurry : fx.queue.length ? Math.max(m.hurry, m.ms - 800) : m.ms;
   c.endAt = c.at + ms;
   c.timer = fxLater(() => endMoment(c), ms);
 }
@@ -1528,8 +1584,8 @@ function fitMoment(el) {
     { min: 0.55, region: (b) => { const [t, z] = band(b); return [Math.max(t - 26, vTop), z]; } },
     { min: 0.6, region: () => onTable },
   ];
-  let best = null;
-  for (const t of tries) {
+  let best = null, tier = -1;
+  for (const [i, t] of tries.entries()) {
     for (const sh of shapes) {
       for (let s = 1; s >= t.min - 1e-6; s -= 0.04) {
         if (sh.w * s > W - 8) continue;
@@ -1543,9 +1599,12 @@ function fitMoment(el) {
         break;
       }
     }
-    if (best) break;
+    if (best) { tier = i; break; }
   }
-  if (!best) {
+  // 圆桌只露出一部分（有座位在屏幕外：手机上往下翻着看记录、横屏左栏滚开了）时，
+  // 桌上只放得下缩得很小的（字只剩六七像素）、或者得压在座位上才放得下：改成传令，字保持原大
+  const cut = boxes.some((b) => b.top < vTop - 6 || b.bottom > vBot + 6);
+  if (!best || (cut && (best.s < 0.75 || tier === tries.length - 1))) {
     heraldMoment(el, mo, variants, [vTop + wr.top - 6, vBot + wr.top + 6]);
     return;
   }
@@ -1661,11 +1720,16 @@ function maybeReveal() {
   const g = S.g;
   if (S.revealFresh && (g.you || g.spectator)) {
     S.revealFresh = false;
-    // 已经轮到你行动（比如你是首任队长）：不挡圆桌，只让身份卡亮一下
-    if (g.you && !g.pending && ACTIVE.includes(g.status)) showReveal(g.you);
-    else if (g.you) pulseIdentity();
+    // 开局一定先亮身份——首任队长也一样（小屏手机上身份卡在行动栏下面，不亮这一下就不知道自己是谁）。
+    // 行动卡片照常摆好；身份牌几秒后自己收起，点一下立即收起
+    if (g.you && ACTIVE.includes(g.status)) {
+      showReveal(g.you);
+      S.fx.revealPid = myTurn()?.id ?? null;
+    } else if (g.you) pulseIdentity();
   }
-  if (g.pending) hideReveal();
+  // 身份牌还亮着时又轮到你（新的待办）：让开圆桌
+  const p = myTurn();
+  if (p && p.id !== S.fx.revealPid) hideReveal();
 }
 
 function showReveal(y) {
@@ -1744,10 +1808,13 @@ document.addEventListener("click", (e) => {
 // 轮到你行动、但行动栏还压着揭晓（最后一次翻牌、刺杀阶段，或两幕之间的空档）：
 // 点一下桌面就把压着的结果全部摆出来、呈上行动卡片——同一下点击接着就能选人（后面那几幕照常演）
 function rushHeld() {
-  if (!S.g?.pending || !dockHeld()) return;
+  if (!myTurn() || !dockHeld()) return;
   const c = S.fx.cur;
   if (c && !c.m.body) landMoment(c);
   releaseAll();
+  // 排着的“刺杀阶段”要宣布的东西（缎带、记录、行动栏）已经随 releaseAll 摆出来了：
+  // 不再在你选人、出手之后补演那块牌子（也不会把行动栏的话退回“讨论中”）
+  S.fx.queue = S.fx.queue.filter((m) => m.type !== "evil_reveal");
 }
 document.addEventListener("keydown", (e) => {
   if (!S.fx || e.repeat) return;
@@ -1795,7 +1862,7 @@ const head = (icon, title, sub, extra = "", seal = "gold") => `
       <div class="act-titles"><div class="act-title">${title}</div>${sub ? `<div class="act-sub">${sub}</div>` : ""}${extra}</div></div>`;
 
 // 已选：迷你纹章 + 虚线空位 + n/N（内容由 updateSelectionUI 填）
-const pick = () => `<div class="pick"><span class="pick-k">已选</span><span class="slots" id="sel-slots"></span><span class="cnt" id="sel-cnt"></span>` +
+const pick = () => `<div class="pick" data-full="已选满 · 先点已选的人取消"><span class="pick-k">已选</span><span class="slots" id="sel-slots"></span><span class="cnt" id="sel-cnt"></span>` +
   `<span class="sr-only" aria-live="polite">已选 <span id="sel-list">无</span></span></div>`;
 
 // 一排迷你纹章：提名的队伍 / 可选的人
@@ -1836,7 +1903,7 @@ const PANELS = {
   lady_choose: (p) => `${head("waves", "湖中仙女：查验一名玩家", "在圆桌上点选 · 只有你会看到TA的真实阵营", "", "lady")}
     <div class="act-main">${teamLine(p.candidates, "可查验", false)}</div>
     <div class="act-side with-pick">${pick()}<button class="primary" id="act-submit" disabled>${ic("eye")}<span>查验</span></button></div>`,
-  lady_announce: (p) => `${head("waves", `查验结果：${p.target}号是 <span class="label ${p.result}">${TEAM_NAME[p.result]}</span>`, "只有你看到真实结果，公布时可以撒谎", "", "lady")}
+  lady_announce: (p) => `${head("waves", `<span class="ah-long">查验结果：</span>${p.target}号是 <span class="label ${p.result}">${TEAM_NAME[p.result]}</span>`, "只有你看到真实结果，公布时可以撒谎", "", "lady")}
     <div class="act-main">
       <div class="claim-row" role="radiogroup" aria-label="公开宣布"><span class="claim-k">公开宣布</span>
         <label class="pill-radio good"><input type="radio" name="claim" value="good" ${p.result === "good" ? "checked" : ""}><span>是好人</span></label>
@@ -1883,13 +1950,16 @@ function renderAction() {
   const g = S.g;
   const box = $("#action");
   const bar = $(".action-bar");
-  const noHint = g.status !== "running" || g.spectator;
-  setAttr($("#btn-hint"), "disabled", noHint ? "" : null);
   if (HINT.html && HINT.key !== hintKey()) { HINT.html = ""; hintReady(false); } // 局面变了：没看的提示作废
   const held = dockHeld();
-  const p = held ? null : g.pending;
+  // 揭晓途中教练按钮保持原样（对局刚结束时它会变灰——也是一种剧透）
+  if (!held) {
+    const noHint = g.status !== "running" || g.spectator;
+    setAttr($("#btn-hint"), "disabled", noHint ? "" : null);
+    bar.classList.toggle("no-hint", noHint);
+  }
+  const p = held ? null : myTurn();
   bar.classList.toggle("your-turn", !!p);
-  bar.classList.toggle("no-hint", noHint);
   const title = p ? "【轮到你】阿瓦隆练习场" : "阿瓦隆练习场";
   if (document.title !== title) document.title = title;
   if (held) {
@@ -1919,7 +1989,8 @@ function renderAction() {
     updateSelectionUI();
     return;
   }
-  S.pendingKey = null;
+  // 刚交过的那条（done…）记着：晚到的旧轮询还带着它时，不会把卡片摆回来
+  if (!S.pendingKey?.startsWith("done")) S.pendingKey = null;
   setTurnNote("");
   if (g.status === "ended") {
     const me = g.you;
@@ -1966,12 +2037,15 @@ function bringSeatsIntoView(pick = true, instant = false) {
       bot = Math.max(bot, r.bottom);
     }
     top -= 24; // 王冠
+    const room = ($(".topbar")?.offsetHeight || 0) - window.scrollY; // 顶栏还露在屏幕里的高度
     let dy = 0;
     if (!pick) {
-      const room = ($(".topbar")?.offsetHeight || 0) - window.scrollY;
       if (bot > avail - 6 && room > 4) dy = Math.min(bot - (avail - 6), room);
     } else if (bot - top > avail - 12 || bot > avail - 6) dy = bot - (avail - 6);
     else if (top < 6) dy = top - 6;
+    // 顶栏只剩一小条（火漆被切掉下半截，看着像没画好）：整条滚出去——点人时要保证最上面的座位还在屏幕里
+    const left = room - dy;
+    if (dy > 0 && left > 0 && left < 32 && (!pick || top - room >= 0)) dy = room;
     if (Math.abs(dy) > 4) window.scrollBy({ top: dy, behavior: instant || reduceMotion() ? "auto" : "smooth" });
   });
 }
@@ -1988,6 +2062,7 @@ function showWaiting(who) {
     startTips();
   }
   patch(box.querySelector(".w-who"), who);
+  showTip(); // 手机上：新到的发言换进小贴士那一格
 }
 
 const THINK_VERB = {
@@ -2049,21 +2124,42 @@ const WATCH_TIPS = [
 function tipText() {
   const g = S.g;
   if (g.spectator) return WATCH_TIPS[S.tipN % WATCH_TIPS.length];
-  const phaseList = PHASE_TIPS[g.phase] || [];
+  // 揭晓途中（翻牌、刺杀阶段）只用通用的小贴士：按阶段挑的那句会说出下一阶段是什么
+  const phaseList = (!S.fx.holdEnd && PHASE_TIPS[g.phase]) || [];
   const pool = S.tipN % 2 && phaseList.length ? phaseList : TIPS;
   return pool[Math.floor(S.tipN / 2) % pool.length];
 }
-function showTip(fresh) {
+// 手机上（行动栏吸底，对局记录在下面、看不到）：发言、投票阶段，小贴士那一格换成这次提名最新的一条发言——
+// 不用往下翻也跟得上大家在说什么（还扣着没揭晓的记录不算）
+function latestSpeech() {
+  if (!["discuss", "vote"].includes(S.g.phase) || getComputedStyle($(".action-bar")).position !== "sticky") return null;
+  for (let i = S.events.length - 1; i >= 0; i--) {
+    const e = S.events[i];
+    if (e.type === "proposal") return null;
+    if (e.type === "speech" && e.text && !S.fx.heldLog.has(e.id)) return e;
+  }
+  return null;
+}
+// 换了一句（定时轮换 / 新的发言）才重写，并播放淡入
+function showTip() {
   const el = $("#action .w-tip");
   if (!el || !S.g) { stopTips(); return; }
-  patch(el, `<span class="w-tip-k">${ic("candle")}<span>小贴士</span></span><span class="w-tip-t${fresh ? " in" : ""}">${esc(tipText())}</span>`);
+  const sp = latestSpeech();
+  const key = sp ? `s${sp.id}` : `t${S.tipN}`;
+  if (el._key === key) return;
+  const fresh = el._key !== undefined && !reduceMotion();
+  el._key = key;
+  const t = `<span class="w-tip-t${fresh ? " in" : ""}">`;
+  patch(el, sp
+    ? `<span class="w-tip-k say">${ic("quill")}<span>${sp.seat}号</span></span>${t}${esc(nameOf(sp.seat))}：${esc(sp.text)}</span>`
+    : `<span class="w-tip-k">${ic("candle")}<span>小贴士</span></span>${t}${esc(tipText())}</span>`);
 }
 function startTips() {
   stopTips();
   if (S.tipN === undefined) S.tipN = Math.floor(Math.random() * 1000);
   S.tipN++;
-  showTip(false);
-  S.tipTimer = setInterval(() => { S.tipN++; showTip(!reduceMotion()); }, TIP_MS);
+  showTip();
+  S.tipTimer = setInterval(() => { S.tipN++; showTip(); }, TIP_MS);
 }
 function stopTips() {
   clearInterval(S.tipTimer);
@@ -2072,7 +2168,7 @@ function stopTips() {
 
 // ---------- 选人：已选队员位 + 计数 + 按钮 ----------
 function updateSelectionUI() {
-  const p = S.g.pending;
+  const p = myTurn();
   if (!p) return;
   const sel = selection();
   const need = sel ? sel.max : 0;
@@ -2189,9 +2285,20 @@ $("#table").addEventListener("click", (e) => {
   if (S.selected.includes(seat)) { S.selected = S.selected.filter((s) => s !== seat); S.lastPick = 0; }
   else if (sel.max === 1) { S.selected = [seat]; S.lastPick = seat; }
   else if (S.selected.length < sel.max) { S.selected.push(seat); S.lastPick = seat; }
+  else { nudgePick(); return; }
   renderTable();
   updateSelectionUI();
 });
+// 已经选满还去点别人：已选那一栏晃一下，提示先点掉一个已选的
+function nudgePick() {
+  const pk = $("#action .pick");
+  if (!pk) return;
+  pk.classList.remove("nudge");
+  void pk.offsetWidth; // 重新触发动画
+  pk.classList.add("nudge");
+  clearTimeout(pk._nudge);
+  pk._nudge = setTimeout(() => pk.classList.remove("nudge"), 1800);
+}
 // 键盘也能选人
 $("#table").addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.classList?.contains("avatar")) {
@@ -2337,12 +2444,14 @@ function logToBottom(smooth) {
 const rowHtml = (ev, fresh) => {
   const h = eventHtml(ev);
   if (!h) return "";
-  // 要在桌上揭晓的结果先扣着；“刺杀阶段”那一幕开演之前到的记录（坏人讨论刺杀谁）也扣着，不抢在最后一次翻牌之前剧透
+  // 要在桌上揭晓的结果先扣着；闸门（还没翻定的牌、还没开演的“刺杀阶段”）之后到的记录也扣着：
+  // 下一轮的提名、发言，坏人讨论刺杀谁，都不抢在牌翻开之前出现
   const own = fresh && HOLD_LOG.has(ev.type);
-  const byReveal = fresh && !own && S.fx.holdReveal && ev.id > S.fx.holdReveal;
-  const held = own || byReveal;
+  const gate = gateId();
+  const byGate = fresh && !own && gate && ev.id > gate;
+  const held = own || byGate;
   if (held) S.fx.heldLog.add(ev.id);
-  if (byReveal) S.fx.revealRows.push(ev.id);
+  if (byGate) S.fx.gateRows.push(ev.id);
   return `<div class="evw${fresh && !held ? " fresh" : ""}${held ? " held" : ""}" data-ev="${ev.id}">${h}</div>`;
 };
 // 整段重建（刷新恢复 / 终局）：先写最后几十条并停到最新一条，更早的记录在空闲时分批补到上面，
