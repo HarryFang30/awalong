@@ -71,7 +71,16 @@ function setAttr(el, name, val) {
 const ic = (name) => ART.icon(name);
 const player = (s) => S.g?.players.find((p) => p.seat === +s);
 const nameOf = (s) => player(s)?.name ?? "";
-const seatColor = (s) => ART.color(s);
+// 纹章：同一个 AI 性格每局都是同一面盾（底色 + 徽记），你是羊皮纸盾 + 姓名首字
+const armsOf = (s) => ART.arms(player(s));
+// 小色块（队伍标签、你知道的信息）用盾面底色；你的盾是金色羊皮纸，色块用金色
+const seatColor = (s) => { const a = armsOf(s); return a.me ? "#d9b45a" : a.field; };
+// 可复用的迷你纹章盾：盾面 + 底部的座位号圆章。size: xs / sm / md / lg
+// 对局记录、行动栏队员位、结算表、桌心队伍都用它，和圆桌上的座位长得一样
+function seatEmblem(seat, size = "sm") {
+  const a = armsOf(seat);
+  return `<span class="emb emb-${size}${a.me ? " me" : ""}" aria-hidden="true">${ART.blazon(a, "eshield")}<b>${+seat}</b></span>`;
+}
 const sortSeats = (arr) => [...arr].sort((a, b) => a - b);
 const seatsText = (arr) => (arr && arr.length ? sortSeats(arr).map((s) => `${s}号`).join("、") : "无");
 const seatTag = (s) => `<b>${s}号</b>${player(s)?.is_human ? "（你）" : `「${esc(nameOf(s))}」`}`;
@@ -220,7 +229,8 @@ function renderLobby() {
       if (me) cls += unknown ? " me unk" : " me";
       // 随机座位时号码未定：你的盾是素面“？”，其他人只画纹章不写号码
       const num = unknown ? "?" : mine || watch ? s : "";
-      html = ART.shield(unknown ? 0 : s) + (num === "" ? "" : `<b>${num}</b>`) + (me ? "<i>你</i>" : "");
+      // 你的盾和对局里一样是金色羊皮纸；其他座位用纹章底色（人设要开局后才定）
+      html = (me ? ART.blazon({ me: true }) : ART.shield(s)) + (num === "" ? "" : `<b>${num}</b>`) + (me ? "<i>你</i>" : "");
     }
     if (!show) cls += " off";
     if (el.className !== cls) el.className = cls;
@@ -414,8 +424,10 @@ function renderTracks() {
     let title = `第${i + 1}轮：${q.size}人`;
     if (q.fails_needed === 2) title += "，需要2张失败才失败";
     if (q.success !== null) title += `；${q.success ? "成功" : "失败"}（${q.fails}张失败）`;
-    const face = q.success === true ? "✓" : q.success === false ? "✗" : q.size;
-    return `<div class="quest ${cls}" title="${title}" aria-label="${title}"><span class="qn">${face}</span>${q.fails_needed === 2 ? '<span class="two">2败</span>' : ""}</div>`;
+    // 结果用内联 SVG（字体里的 ✓ ✗ 渲染发虚）；失败多于 1 张时在火漆下方写张数
+    const face = q.success === true ? ic("check") : q.success === false ? ic("cross") : q.size;
+    const fails = q.success !== null && q.fails > 1 ? `<span class="qf">${q.fails}败</span>` : "";
+    return `<div class="quest ${cls}" title="${title}" aria-label="${title}"><span class="qn">${face}</span>${q.fails_needed === 2 && q.success === null ? '<span class="two">2败</span>' : ""}${fails}</div>`;
   }).join("");
   const track = $("#quest-track");
   if (patch(track, html) && prev && S.live) {
@@ -427,11 +439,13 @@ function renderTracks() {
     `<i class="${i < r ? "on" : ""} ${i === 4 ? "last" : ""}"></i>`).join("") + `<span class="sr-only">已否决 ${r} 次</span>`);
 }
 
-function lastVoteEvent() {
+// 最近一次投票；新的提名开始后它就“过时”了：座位上的票型缩小变暗，但仍然看得清
+function lastVote() {
+  let stale = false;
   for (let i = S.events.length - 1; i >= 0; i--) {
     const t = S.events[i].type;
-    if (t === "vote") return S.events[i];
-    if (t === "proposal" || t === "quest_start" || t === "evil_reveal") return null;
+    if (t === "vote") return { ev: S.events[i], stale };
+    if (t === "proposal" || t === "quest_start" || t === "evil_reveal") stale = true;
   }
   return null;
 }
@@ -439,18 +453,119 @@ function lastVoteEvent() {
 function selection() {
   const p = S.g.pending;
   if (!p) return null;
-  if (p.type === "propose") return { seats: S.g.players.map((x) => x.seat), max: p.size };
-  if (["lady_choose", "assassin_suggest", "assassinate"].includes(p.type)) return { seats: p.candidates, max: 1 };
+  if (p.type === "propose") return { seats: S.g.players.map((x) => x.seat), max: p.size, type: p.type };
+  if (["lady_choose", "assassin_suggest", "assassinate"].includes(p.type)) return { seats: p.candidates, max: 1, type: p.type };
   return null;
 }
 
-function seatPos(seat) {
-  const n = S.g.n;
-  const base = S.g.you ? S.g.you.seat : 1;
-  const theta = Math.PI / 2 + ((seat - base) * 2 * Math.PI) / n;
-  const [rx, ry] = NARROW.matches ? [38.5, 39] : [41, 37];
-  return { x: 50 + rx * Math.cos(theta), y: 50 + ry * Math.sin(theta) };
+// ---------------------------------------------------------------------
+// 座位排布：沿椭圆按“弧长”等距排开（宽桌子两侧不会挤成一摞），你永远坐在正下方。
+// 椭圆大小按圆桌区域的实际宽高算：上方留出王冠，下方留出名牌和标签，两侧留出名牌半宽。
+// 只有尺寸、人数或你的座位变化时才重新计算；平时轮询不会改动任何样式。
+// ---------------------------------------------------------------------
+const RING = { key: "", pos: {}, side: {} };
+
+// 沿椭圆按弧长等分 n 个座位（从正下方开始，顺时针：下 → 左 → 上 → 右）
+function ringPoints(n, rx, ry) {
+  const M = 720;
+  const cum = [0];
+  let px = 0, py = ry;
+  for (let i = 1; i <= M; i++) {
+    const t = Math.PI / 2 + (i / M) * 2 * Math.PI;
+    const x = rx * Math.cos(t), y = ry * Math.sin(t);
+    cum.push(cum[i - 1] + Math.hypot(x - px, y - py));
+    px = x; py = y;
+  }
+  const L = cum[M];
+  const pts = [];
+  let j = 0;
+  for (let k = 0; k < n; k++) {
+    const target = (k * L) / n;
+    while (j < M && cum[j + 1] < target) j++;
+    const f = cum[j + 1] > cum[j] ? (target - cum[j]) / (cum[j + 1] - cum[j]) : 0;
+    const tArc = Math.PI / 2 + ((j + f) / M) * 2 * Math.PI;
+    const tEq = Math.PI / 2 + (k * 2 * Math.PI) / n;
+    const t = 0.8 * tArc + 0.2 * tEq; // 以弧长为主，稍微向等角靠一点
+    pts.push({ c: Math.cos(t), s: Math.sin(t) });
+  }
+  return pts;
 }
+
+function ringLayout() {
+  const g = S.g;
+  const wrap = $(".table-wrap");
+  const table = $("#table");
+  if (!g || !table) return false;
+  const W = table.clientWidth, H = table.clientHeight;
+  if (!W || !H) return false;
+  const base = g.you ? g.you.seat : 1;
+  const key = `${W}x${H}|${g.n}|${base}|${window.innerWidth}x${window.innerHeight}`;
+  if (key === RING.key) return false;
+  RING.key = key;
+
+  const cs = getComputedStyle(table);
+  const num = (name, def) => { const v = parseFloat(cs.getPropertyValue(name)); return Number.isFinite(v) ? v : def; };
+  const m = {
+    sh: num("--sh", 56),            // 盾牌宽
+    up: num("--seat-up", 54),       // 盾心以上要留的空间（王冠）
+    down: num("--seat-down", 84),   // 盾心以下（座位号圆章 + 名牌 + 标签）
+    side: num("--seat-side", 56),   // 竖排座位的半宽
+    info: num("--info-w", 96),      // 横排座位：名牌那一侧的宽度
+    gx: num("--rim-gx", 54),        // 座位环比桌沿宽出多少
+    gy: num("--rim-gy", 12),
+    aspect: num("--ring-aspect", 2.1),
+  };
+  const n = g.n;
+  const ry = Math.max(30, (H - m.up - m.down) / 2);
+  const cy = m.up + ry;
+  const place = (halfW) => {
+    const rx = Math.max(30, Math.min(W / 2 - halfW, ry * m.aspect));
+    return { rx, pts: ringPoints(n, rx, ry).map((p) => ({ ...p, x: rx * p.c, y: ry * p.s })) };
+  };
+  // 先按竖排（盾在上、名牌在下）排；两侧相邻的座位挤在一起、而桌子又够宽时，
+  // 把两侧的座位改成横排：盾牌贴着桌沿，名牌和标签放到外侧的木头上
+  let lay = place(m.side);
+  const crowded = lay.pts.some((a, i) => {
+    const b = lay.pts[(i + 1) % n];
+    return Math.abs(a.x - b.x) < 2 * m.side - 10 && Math.abs(a.y - b.y) < m.down + m.up * 0.85;
+  });
+  const sideHalf = m.sh / 2 + m.sh * 0.26 + 3 + m.info;
+  const sideMode = crowded && W / 2 - sideHalf >= ry * 1.15;
+  if (sideMode) lay = place(sideHalf);
+
+  RING.pos = {};
+  RING.side = {};
+  lay.pts.forEach((p, k) => {
+    const seat = ((base - 1 + k) % n) + 1;
+    RING.pos[seat] = {
+      left: `${((100 * (W / 2 + p.x)) / W).toFixed(3)}%`,
+      top: `${((100 * (cy + p.y)) / H).toFixed(3)}%`,
+    };
+    RING.side[seat] = sideMode && Math.abs(p.c) > 0.55 ? (p.c < 0 ? "side-l" : "side-r") : "";
+  });
+  const oy = Math.max(24, ry - m.gy);
+  const ox = Math.max(30, Math.min(lay.rx - (sideMode ? m.sh * 0.5 + 18 : m.gx), oy * 1.72));
+  const vars = { "--cy": `${cy.toFixed(1)}px`, "--ox": `${ox.toFixed(1)}px`, "--oy": `${oy.toFixed(1)}px` };
+  for (const [k, v] of Object.entries(vars)) if (wrap.style.getPropertyValue(k) !== v) wrap.style.setProperty(k, v);
+  return true;
+}
+
+function placeSeat(el, seat) {
+  const pos = RING.pos[seat];
+  if (!pos) return;
+  // 浏览器会把 "12.300%" 规范成 "12.3%"，所以记住上次写入的值来比较，避免每次轮询都改样式
+  const k = pos.left + "," + pos.top;
+  if (el._pos === k) return;
+  el._pos = k;
+  el.style.left = pos.left;
+  el.style.top = pos.top;
+}
+
+function placeSeats() {
+  if (!S.g || !ringLayout()) return;
+  renderTable(); // 横排/竖排可能变了，连同位置一起更新
+}
+if (window.ResizeObserver) new ResizeObserver(placeSeats).observe($("#table"));
 
 function labelClass(text) {
   if (/坏/.test(text)) return "evil";
@@ -458,13 +573,22 @@ function labelClass(text) {
   return "good";
 }
 
+const PICK_ICON = { propose: "check", lady_choose: "waves", assassin_suggest: "dagger", assassinate: "dagger" };
+
 function renderTable() {
   const g = S.g;
   const sel = selection();
   const team = g.proposal || [];
-  const vote = lastVoteEvent();
-  const freshVote = vote && vote.id === S.fx.voteId && performance.now() - S.fx.voteAt < 1500;
+  const lv = S.ended ? null : lastVote();
+  const vote = lv?.ev;
+  const freshVote = vote && !lv.stale && vote.id === S.fx.voteId && performance.now() - S.fx.voteAt < 1500;
   const table = $("#table");
+  const tcls = ["table"];
+  if (sel) tcls.push("picking", `pick-${sel.type}`);
+  if (g.n >= 9) tcls.push("crowded");
+  const tclass = tcls.join(" ");
+  if (table.className !== tclass) table.className = tclass;
+  ringLayout();
   const seen = new Set();
   g.players.forEach((p) => {
     seen.add(String(p.seat));
@@ -472,10 +596,11 @@ function renderTable() {
     if (!el) {
       el = document.createElement("div");
       el.dataset.seat = p.seat;
-      el.innerHTML = `<div class="avatar"></div><div class="name"></div><div class="labels"></div>`;
+      el.innerHTML = `<div class="avatar"></div><div class="plate"><span class="name"></span><span class="mk"></span></div><div class="labels"></div>`;
       table.appendChild(el);
     }
-    const [avatarEl, nameEl, labelsEl] = el.children;
+    const [avatarEl, plateEl, labelsEl] = el.children;
+    const [nameEl, mkEl] = plateEl.children;
 
     const cls = ["seat"];
     if (p.is_human) cls.push("me");
@@ -487,28 +612,28 @@ function renderTable() {
     }
     if (g.thinking.includes(p.seat)) cls.push("thinking");
     if (p.role_name && (S.ended || g.spectator)) cls.push("revealed", `team-${p.team}`);
+    if (RING.side[p.seat]) cls.push(RING.side[p.seat]);
     const className = cls.join(" ");
     if (el.className !== className) el.className = className;
+    placeSeat(el, p.seat);
 
-    const pos = seatPos(p.seat);
-    const left = `${pos.x.toFixed(3)}%`, top = `${pos.y.toFixed(3)}%`;
-    if (el.style.left !== left) el.style.left = left;
-    if (el.style.top !== top) el.style.top = top;
-
-    // 盾牌 + 徽记
+    // 纹章盾 + 座位号圆章 + 各种徽记
     const isLeader = g.leader === p.seat && ACTIVE.includes(g.status);
     let chip = "";
     if (vote) {
       const v = vote.votes[String(p.seat)];
-      chip = `<span class="vote-chip ${v ? "yes" : "no"}" title="${v ? "赞成" : "反对"}" style="--i:${p.seat}">${ic(v ? "check" : "cross")}</span>`;
+      if (v !== undefined) {
+        chip = `<span class="vote-chip ${v ? "yes" : "no"}${lv.stale ? " stale" : ""}" title="${lv.stale ? "上一次投票：" : ""}${v ? "赞成" : "反对"}" style="--i:${p.seat}">${ic(v ? "check" : "cross")}</span>`;
+      }
     }
-    const avatarHtml = ART.shield(p.seat) + `<span class="num">${p.seat}</span>` +
+    const pickIc = PICK_ICON[sel?.type] || "check";
+    const avatarHtml = ART.blazon(ART.arms(p)) + `<span class="num">${p.seat}</span>` +
       (isLeader ? `<span class="crown" title="队长">${ART.crownBadge()}</span>` : "") +
       (g.lady_enabled && g.lady_holder === p.seat ? `<span class="lady" title="湖中仙女">${ART.ladyBadge()}</span>` : "") +
       chip +
       `<span class="think" aria-hidden="true"><i></i><i></i><i></i></span>` +
       `<span class="badge tb" aria-hidden="true">${ic("swords")}</span>` +
-      `<span class="badge sb" aria-hidden="true">${ic("check")}</span>`;
+      `<span class="badge sb sb-${sel?.type || "none"}" aria-hidden="true">${ic(pickIc)}</span>`;
     if (patch(avatarEl, avatarHtml) && freshVote) avatarEl.querySelector(".vote-chip")?.classList.add("pop");
     setAttr(avatarEl, "title", p.is_human ? "你" : `${p.name}：${p.persona}`);
     setAttr(avatarEl, "role", selectable ? "button" : null);
@@ -527,10 +652,19 @@ function renderTable() {
     const mark = S.marks[p.seat] || "";
     const markBtn = p.is_human || g.spectator ? ""
       : `<button class="mark" data-mark="${mark}" title="记下你对TA的判断（点击切换）" aria-label="标记 ${p.seat}号：${MARK_TEXT[mark]}">${MARK_TEXT[mark]}</button>`;
-    patch(labelsEl, labels.join("") + markBtn);
+    patch(mkEl, markBtn);
+    patch(labelsEl, labels.join(""));
   });
   table.querySelectorAll(".seat").forEach((el) => { if (!seen.has(el.dataset.seat)) el.remove(); });
   patch($("#table-center"), centerText());
+}
+
+// 桌心的一排小盾：已选的队员 + 虚线空位
+function teamSlots(seats, need = 0) {
+  const list = sortSeats(seats || []);
+  let html = list.map((s) => `<span class="slot on" title="${s}号 ${esc(nameOf(s))}">${seatEmblem(s, "sm")}</span>`).join("");
+  for (let i = list.length; i < need; i++) html += `<span class="slot">${ART.slotShield()}</span>`;
+  return html ? `<div class="tc-slots">${html}</div>` : "";
 }
 
 function centerText() {
@@ -540,8 +674,23 @@ function centerText() {
   }
   if (g.status === "error") return `<div class="phase">出错了</div><div class="tc-line">${esc(g.error)}</div>`;
   if (g.status === "cancelled") return `<div class="phase">对局已结束</div>`;
+  // 轮到你点人：桌心直接告诉你点几个、点了几个
+  const sel = selection();
+  if (sel) {
+    const need = sel.max;
+    const verb = { propose: "点选队员", lady_choose: "点选查验对象", assassin_suggest: "点选你怀疑的梅林", assassinate: "点选刺杀目标" }[sel.type];
+    const kicker = {
+      propose: `你是队长 · 第${g.quest_index + 1}轮第${Math.max(1, g.attempt)}次提名`,
+      lady_choose: "湖中仙女在你手中",
+      assassin_suggest: "刺杀讨论",
+      assassinate: "你是刺客 · 一击定胜负",
+    }[sel.type];
+    const done = S.selected.length === need;
+    return `<div class="tc-kicker">${kicker}</div>` +
+      `<div class="phase pick${sel.type === "assassinate" || sel.type === "assassin_suggest" ? " evil-text" : ""}">${verb} <span class="cnt${done ? " done" : ""}"><b>${S.selected.length}</b>/${need}</span></div>` +
+      teamSlots(S.selected, need);
+  }
   const head = `第${g.quest_index + 1}轮任务 · 第${Math.max(1, g.attempt)}次提名`;
-  const team = g.proposal ? `<div class="team">${seatChips(g.proposal)}</div>` : "";
   const phase = {
     setup: "准备中",
     propose: `队长 ${g.leader}号 正在组队`,
@@ -555,7 +704,7 @@ function centerText() {
   if (g.phase === "lady") return `<div class="tc-kicker">第${g.quest_index}轮之后</div><div class="phase">湖中仙女</div><div class="tc-line">${phase}</div>`;
   const q = g.quests[g.quest_index];
   const kicker = q ? `<div class="tc-kicker">${q.size}人出征${q.fails_needed === 2 ? " · 需2张失败" : ""}</div>` : "";
-  return `${kicker}<div class="phase">${head}</div><div class="tc-line">${phase}</div>${team}`;
+  return `${kicker}<div class="phase">${head}</div><div class="tc-line">${phase}</div>${g.proposal ? teamSlots(g.proposal) : ""}`;
 }
 
 function renderIdentity() {
@@ -601,13 +750,13 @@ $("#identity").addEventListener("click", (e) => {
 function renderUsage() {
   const g = S.g;
   const el = $("#usage");
-  if (!g.llm) { el.textContent = "离线 AI"; return; }
+  if (!g.llm) { if (el.textContent !== "离线 AI") el.textContent = "离线 AI"; return; }
   const u = g.usage;
   if (!u) return;
   const k = ((u.prompt_tokens + u.completion_tokens) / 1000).toFixed(1);
   const text = `DeepSeek ${u.calls} 次 · ${k}k tokens`;
   if (el.textContent !== text) el.textContent = text;
-  el.title = `模型 ${u.model}；输入 ${u.prompt_tokens}（缓存命中 ${u.cache_hit_tokens}），输出 ${u.completion_tokens}；失败 ${u.errors} 次`;
+  setAttr(el, "title", `模型 ${u.model}；输入 ${u.prompt_tokens}（缓存命中 ${u.cache_hit_tokens}），输出 ${u.completion_tokens}；失败 ${u.errors} 次`);
 }
 
 // =====================================================================
@@ -932,7 +1081,7 @@ $("#table").addEventListener("keydown", (e) => {
     e.target.click();
   }
 });
-NARROW.addEventListener("change", () => { if (S.g) renderTable(); });
+NARROW.addEventListener("change", () => { if (S.g) { placeSeats(); renderTable(); } });
 
 // =====================================================================
 // 对局记录
@@ -949,7 +1098,7 @@ function bubble(seat, text, tags = []) {
   const me = player(seat)?.is_human;
   const passed = !text;
   return `<div class="speech${me ? " mine" : ""}">
-    <div class="mini">${ART.shield(seat, "mshield")}<span>${seat}</span></div>
+    <div class="mini">${seatEmblem(seat, "sm")}</div>
     <div class="bubble${passed ? " passed" : ""}">
       <div class="who"><b>${seat}号 ${esc(nameOf(seat))}</b>${me ? "（你）" : ""}${tags.map((t) => `<span class="tag-r">${t}</span>`).join("")}</div>
       ${passed ? "过" : esc(text)}
@@ -1085,7 +1234,7 @@ function showEndModal() {
     const st = g.stats?.[String(p.seat)];
     const acc = st && st.votes ? Math.round((100 * st.correct) / st.votes) + "%" : "-";
     return `<tr class="${p.is_human ? "me-row" : ""}">
-      <td><span class="who-cell"><span class="mini">${ART.shield(p.seat, "mshield")}<span>${p.seat}</span></span>${esc(p.name)}${p.is_human ? "（你）" : ""}</span></td>
+      <td><span class="who-cell">${seatEmblem(p.seat, "sm")}${esc(p.name)}${p.is_human ? "（你）" : ""}</span></td>
       <td><span class="label ${p.team}">${esc(p.role_name)}</span></td>
       <td>${p.team === "good" ? acc : "-"}</td>
       <td>${st && p.team === "good" ? st.proposals_with_evil + "/" + st.proposals : "-"}</td>
